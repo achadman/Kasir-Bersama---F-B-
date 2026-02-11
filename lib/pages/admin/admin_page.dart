@@ -21,6 +21,7 @@ import 'widgets/admin_menu_item.dart';
 import 'widgets/admin_drawer.dart';
 import 'widgets/low_stock_dialog.dart';
 import 'report/shift_report_page.dart';
+import 'report/profit_loss_page.dart';
 
 class AdminPage extends StatefulWidget {
   const AdminPage({super.key});
@@ -394,7 +395,14 @@ class _AdminPageState extends State<AdminPage> {
                                   label: "Laba Rugi",
                                   icon: CupertinoIcons.money_dollar_circle,
                                   color: Colors.teal,
-                                  onTap: () {},
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ProfitLossPage(
+                                        storeId: controller.storeId!,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),

@@ -4,6 +4,7 @@ class ProductModel {
   String category;
   double price;
   int stock;
+  int? maxStock;
   List<String> toppings;
 
   ProductModel({
@@ -12,6 +13,7 @@ class ProductModel {
     required this.category,
     required this.price,
     required this.stock,
+    this.maxStock,
     required this.toppings,
   });
 
@@ -22,7 +24,14 @@ class ProductModel {
       category: data['category'] ?? '',
       price: (data['price'] ?? 0).toDouble(),
       stock: (data['stock'] ?? 0).toInt(),
-      toppings: (data['toppings'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      maxStock: data['max_stock'] != null
+          ? (data['max_stock'] as num).toInt()
+          : null,
+      toppings:
+          (data['toppings'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
     );
   }
 
@@ -32,6 +41,7 @@ class ProductModel {
       'category': category,
       'price': price,
       'stock': stock,
+      'max_stock': maxStock,
       'toppings': toppings,
     };
   }

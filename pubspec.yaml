@@ -27,6 +27,10 @@ dependencies:
   fl_chart: ^0.70.2
   blue_thermal_printer: ^1.2.3
   esc_pos_utils_plus: ^2.0.3
+  excel: ^4.0.6
+  share_plus: ^12.0.1
+  open_filex: ^4.7.0
+  file_saver: ^0.3.1
 
 dev_dependencies:
   flutter_test:

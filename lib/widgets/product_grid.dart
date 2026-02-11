@@ -58,7 +58,10 @@ class ProductGrid extends StatelessWidget {
           if (isDeleted == true) return false;
 
           if (searchQuery.isNotEmpty) {
-            return p['name'].toString().toLowerCase().contains(searchQuery);
+            final query = searchQuery.toLowerCase();
+            final name = p['name'].toString().toLowerCase();
+            final sku = (p['sku'] ?? '').toString().toLowerCase();
+            return name.contains(query) || sku.contains(query);
           }
           return true;
         }).toList();

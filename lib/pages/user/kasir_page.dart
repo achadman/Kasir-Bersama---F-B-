@@ -10,7 +10,7 @@ import '../../services/receipt_service.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/admin_controller.dart';
 import 'widgets/product_option_modal.dart';
-import 'widgets/receipt_preview_page.dart';
+import 'widgets/payment_success_dialog.dart';
 
 class KasirPage extends StatefulWidget {
   const KasirPage({super.key});
@@ -47,6 +47,8 @@ class _KasirPageState extends State<KasirPage> {
   double _cashReceived = 0;
   String _selectedPaymentMethod = "Tunai";
   final TextEditingController _cashController = TextEditingController();
+  final TextEditingController _searchController =
+      TextEditingController(); // Added for clearing search
 
   @override
   void initState() {
@@ -304,22 +306,28 @@ class _KasirPageState extends State<KasirPage> {
 
         Navigator.pop(context); // Close cart sheet
 
-        // Navigate to Receipt Preview
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (ctx) => ReceiptPreviewPage(
-              pdfData: pdfData,
-              fileName: "Struk_${txId.substring(0, 8)}.pdf",
-              storeName: currentStoreName,
-              transactionId: txId.substring(0, 8).toUpperCase(),
-              createdAt: now,
-              items: receiptItems,
-              totalAmount: totalAmount,
-              cashReceived: finalCash,
-              change: finalChange,
-              paymentMethod: _selectedPaymentMethod,
-            ),
+        // Show Success Dialog
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => PaymentSuccessDialog(
+            pdfData: pdfData,
+            transactionId: txId.substring(0, 8).toUpperCase(),
+            totalAmount: totalAmount,
+            cashReceived: finalCash,
+            change: finalChange,
+            storeName: currentStoreName,
+            createdAt: now,
+            items: receiptItems,
+            paymentMethod: _selectedPaymentMethod,
+            onNewTransaction: () {
+              // Cart is already cleared above
+              setState(() {
+                _cartItems.clear();
+                _cashReceived = 0;
+                _cashController.clear();
+              });
+            },
           ),
         );
       }
@@ -338,6 +346,53 @@ class _KasirPageState extends State<KasirPage> {
   }
 
   bool _isProcessing = false;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _cashController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _searchAndAddBySku(String sku) async {
+    if (sku.isEmpty || _storeId == null) return;
+
+    // 1. Search for product with exact SKU
+    final res = await supabase
+        .from('products')
+        .select()
+        .eq('store_id', _storeId!)
+        .eq('sku', sku) // Exact match for scanning
+        .maybeSingle();
+
+    if (res != null) {
+      // Product found!
+      final product = res;
+
+      // check if deleted
+      if (product['is_deleted'] == true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Produk ini sudah dihapus.")),
+          );
+        }
+        return;
+      }
+
+      // Add to cart
+      _handleProductSelection(product);
+
+      // Clear search field after successful scan
+      setState(() {
+        _searchController.clear();
+        _searchQuery = "";
+      });
+    } else {
+      // Not found by SKU, maybe keep the search query for the grid filter?
+      // But if it was a scan (enter pressed), usually we want to clear or notify.
+      // Let's just keep the filter active so the user sees "No product found" in the grid.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -372,13 +427,16 @@ class _KasirPageState extends State<KasirPage> {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: TextField(
+                controller: _searchController, // Bind controller
                 onChanged: (val) =>
                     setState(() => _searchQuery = val.toLowerCase()),
+                onSubmitted: (val) =>
+                    _searchAndAddBySku(val), // Handle Enter/Scan
                 style: GoogleFonts.inter(
                   color: isDark ? Colors.white : Colors.black87,
                 ),
                 decoration: InputDecoration(
-                  hintText: "Cari menu...",
+                  hintText: "Cari menu atau Scan SKU...",
                   hintStyle: GoogleFonts.inter(
                     color: isDark ? Colors.white38 : Colors.grey,
                   ),
@@ -387,6 +445,17 @@ class _KasirPageState extends State<KasirPage> {
                     size: 20,
                     color: isDark ? Colors.white38 : Colors.grey,
                   ),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 20),
+                          onPressed: () {
+                            setState(() {
+                              _searchController.clear();
+                              _searchQuery = "";
+                            });
+                          },
+                        )
+                      : null,
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(vertical: 8),
                 ),

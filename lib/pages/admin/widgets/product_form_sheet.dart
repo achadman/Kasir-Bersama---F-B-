@@ -22,6 +22,7 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
   final _buyPriceController = TextEditingController(); // Harga Beli
   final _salePriceController = TextEditingController(); // Harga Jual
   final _stockController = TextEditingController();
+  final _maxStockController = TextEditingController();
 
   final supabase = Supabase.instance.client;
   bool _isLoading = false;
@@ -57,6 +58,10 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
           .toString();
       _stockController.text = (widget.product!['stock_quantity'] ?? 0)
           .toString();
+      _maxStockController.text = (widget.product!['max_stock'] ?? '')
+          .toString();
+      if (_maxStockController.text == 'null') _maxStockController.text = '';
+
       _isStockManaged = widget.product!['is_stock_managed'] ?? true;
       _currentImageUrl = widget.product!['image_url'];
       _selectedCategoryId = widget.product!['category_id'];
@@ -289,6 +294,9 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
       final stock = _isStockManaged
           ? (int.tryParse(_stockController.text.trim()) ?? 0)
           : 0;
+      final maxStock = _isStockManaged && _maxStockController.text.isNotEmpty
+          ? int.tryParse(_maxStockController.text.trim())
+          : null;
 
       final data = {
         'store_id': widget.storeId,
@@ -298,6 +306,7 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
         'buy_price': buyPrice,
         'sale_price': salePrice,
         'stock_quantity': stock,
+        'max_stock': maxStock,
         'is_stock_managed': _isStockManaged,
         'category_id': _selectedCategoryId,
         'image_url': imageUrl,
@@ -712,6 +721,16 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
                             theme.cardColor, // Nested, so contrast slightly
                             textColor,
                             isNumber: true,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildInput(
+                            "Stok Maksimum (Opsional)",
+                            _maxStockController,
+                            Icons.vertical_align_top_rounded,
+                            theme.cardColor,
+                            textColor,
+                            isNumber: true,
+                            isRequired: false,
                           ),
                         ],
                       ],
