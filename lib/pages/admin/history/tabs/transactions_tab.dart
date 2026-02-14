@@ -125,60 +125,83 @@ class _TransactionsTabState extends State<TransactionsTab> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Column(
       children: [
+        // Unified Header: Search + Filter Dropdown
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-          child: CupertinoSearchTextField(
-            controller: _searchController,
-            onChanged: _filterTransactions,
-            placeholder: "Cari ID Transaksi atau Kasir",
-            style: TextStyle(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white
-                  : Colors.black,
-            ),
-          ),
-        ),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           child: Row(
-            children: _filters.map((filter) {
-              final isSelected = _selectedFilter == filter;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text(
-                    filter,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: isSelected
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                      color: isSelected ? Colors.white : Colors.grey,
+            children: [
+              Expanded(
+                child: Container(
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? const Color(0xFF1E1E1E)
+                        : const Color(0xFFF1F2F6),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: _filterTransactions,
+                    style: GoogleFonts.inter(fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: "Cari ID / Kasir...",
+                      hintStyle: GoogleFonts.inter(
+                        fontSize: 14,
+                        color: Colors.grey,
+                      ),
+                      prefixIcon: const Icon(
+                        CupertinoIcons.search,
+                        size: 20,
+                        color: Colors.grey,
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                   ),
-                  selected: isSelected,
-                  onSelected: (selected) {
-                    if (selected) {
-                      setState(() => _selectedFilter = filter);
-                      _loadTransactions();
-                    }
-                  },
-                  selectedColor: const Color(0xFFEA5700),
-                  backgroundColor: Colors.transparent,
-                  side: BorderSide(
-                    color: isSelected
-                        ? Colors.transparent
-                        : Colors.grey.withOpacity(0.3),
-                  ),
-                  showCheckmark: false,
                 ),
-              );
-            }).toList(),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                height: 48,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF1E1E1E)
+                      : const Color(0xFFF1F2F6),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _selectedFilter,
+                    icon: const Icon(CupertinoIcons.chevron_down, size: 16),
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                    items: _filters.map((String value) {
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(value),
+                      );
+                    }).toList(),
+                    onChanged: (newValue) {
+                      if (newValue != null) {
+                        setState(() => _selectedFilter = newValue);
+                        _loadTransactions();
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
+
         Expanded(
           child: _isLoading
               ? const Center(child: CupertinoActivityIndicator())
@@ -188,8 +211,43 @@ class _TransactionsTabState extends State<TransactionsTab> {
                   child: ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     children: [
+                      const SizedBox(height: 8),
                       _buildSummaryCard(),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 24),
+
+                      if (_filteredTransactions.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: 12,
+                            left: 8,
+                            right: 8,
+                          ),
+                          child: Row(
+                            children: [
+                              const SizedBox(
+                                width: 12,
+                              ), // Align with row padding
+                              Expanded(
+                                flex: 3,
+                                child: Text("TRANSAKSI", style: _headerStyle),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text("KASIR", style: _headerStyle),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  "TOTAL",
+                                  style: _headerStyle,
+                                  textAlign: TextAlign.right,
+                                ),
+                              ),
+                              const SizedBox(width: 24), // Chevron space
+                            ],
+                          ),
+                        ),
+
                       if (_filteredTransactions.isEmpty)
                         _buildEmptyState()
                       else
@@ -199,7 +257,7 @@ class _TransactionsTabState extends State<TransactionsTab> {
                             onTap: () => _openDetail(tx),
                           ),
                         ),
-                      const SizedBox(height: 80), // Bottom padding
+                      const SizedBox(height: 80),
                     ],
                   ),
                 ),
@@ -207,6 +265,13 @@ class _TransactionsTabState extends State<TransactionsTab> {
       ],
     );
   }
+
+  TextStyle get _headerStyle => GoogleFonts.inter(
+    fontSize: 11,
+    fontWeight: FontWeight.bold,
+    color: Colors.grey[500],
+    letterSpacing: 0.5,
+  );
 
   Widget _buildSummaryCard() {
     final currencyFormat = NumberFormat.currency(

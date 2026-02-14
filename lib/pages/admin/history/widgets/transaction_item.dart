@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import '../../../../widgets/floating_card.dart';
 
 class TransactionItem extends StatelessWidget {
   final Map<String, dynamic> transaction;
@@ -22,6 +21,18 @@ class TransactionItem extends StatelessWidget {
     final total = (transaction['total_amount'] as num).toDouble();
     final date = DateTime.parse(transaction['created_at']).toLocal();
     final cashierName = transaction['profiles']?['full_name'] ?? 'System';
+    final txId = transaction['id'].toString().substring(0, 8).toUpperCase();
+
+    final List items = transaction['transaction_items'] ?? [];
+    String displayTitle = "#$txId";
+    if (items.isNotEmpty) {
+      final firstName = items[0]['products']?['name'] ?? 'Item';
+      if (items.length > 1) {
+        displayTitle = "$firstName + ${items.length - 1} item";
+      } else {
+        displayTitle = firstName;
+      }
+    }
 
     final currencyFormat = NumberFormat.currency(
       locale: 'id',
@@ -29,88 +40,95 @@ class TransactionItem extends StatelessWidget {
       decimalDigits: 0,
     );
 
-    return FloatingCard(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+    return InkWell(
       onTap: onTap,
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEA5700).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              CupertinoIcons.doc_text,
-              color: Color(0xFFEA5700),
-              size: 24,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
             ),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "#${transaction['id'].toString().substring(0, 8).toUpperCase()}",
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        color: isDark ? Colors.white : const Color(0xFF2D3436),
+        ),
+        child: Row(
+          children: [
+            // Product Name & ID/Time
+            Expanded(
+              flex: 3,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayTitle,
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: isDark ? Colors.white : const Color(0xFF2D3436),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        "#$txId",
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          color: Colors.grey.withOpacity(0.7),
+                        ),
                       ),
-                    ),
-                    Text(
-                      currencyFormat.format(total),
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: const Color(0xFFEA5700),
+                      const SizedBox(width: 8),
+                      Text(
+                        DateFormat('HH:mm').format(date),
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          color: Colors.grey.withOpacity(0.7),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(
-                      CupertinoIcons.person,
-                      size: 14,
-                      color: isDark ? Colors.white54 : Colors.grey[600],
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      cashierName,
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: isDark ? Colors.white54 : Colors.grey[600],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Icon(
-                      CupertinoIcons.time,
-                      size: 14,
-                      color: isDark ? Colors.white54 : Colors.grey[600],
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      DateFormat('HH:mm').format(date),
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: isDark ? Colors.white54 : Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Icon(CupertinoIcons.chevron_right, size: 16, color: Colors.grey[400]),
-        ],
+
+            // Cashier
+            Expanded(
+              flex: 2,
+              child: Text(
+                cashierName,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? Colors.white70 : Colors.grey[700],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+
+            // Amount
+            Expanded(
+              flex: 2,
+              child: Text(
+                currencyFormat.format(total),
+                textAlign: TextAlign.right,
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: const Color(0xFFEA5700),
+                ),
+              ),
+            ),
+
+            const SizedBox(width: 8),
+            Icon(
+              CupertinoIcons.chevron_right,
+              size: 14,
+              color: Colors.grey.withOpacity(0.5),
+            ),
+          ],
+        ),
       ),
     );
   }

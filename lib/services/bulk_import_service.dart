@@ -298,7 +298,7 @@ class BulkImportService {
       return null; // User cancelled
     } catch (e) {
       debugPrint("Export Error: $e");
-      throw e;
+      rethrow;
     }
   }
 

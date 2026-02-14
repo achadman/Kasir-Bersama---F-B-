@@ -11,17 +11,34 @@ import 'pages/attendance/attendance_page.dart';
 
 import 'pages/other/splash_page.dart';
 import 'pages/admin/history/history_page.dart';
+import 'pages/other/printer_settings_page.dart';
 import 'controllers/theme_controller.dart';
 import 'controllers/admin_controller.dart';
 import 'controllers/analytics_controller.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'services/bluetooth_printer_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'services/isar_service.dart';
+import 'services/sync_service.dart';
 
 final supabase = Supabase.instance.client;
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Supabase.initialize(
+    url: 'https://pyesewttbjqtniixrhvc.supabase.co',
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZXNld3R0YmpxdG5paXhyaHZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk4NTI5ODAsImV4cCI6MjA4NTQyODk4MH0.Z71ogOpR-oD_WXClMXGlf7UUHNEZ09B63_TyrDboP4c',
+  );
+
+  // Initialize Local DB
+  final isarService = IsarService();
+  await isarService.init();
+
+  // Initialize Sync Service
+  SyncService().init();
+
   runApp(const RootApp());
 }
 
@@ -45,16 +62,10 @@ class _RootAppState extends State<RootApp> {
     // Artificial delay for smoother splash experience
     final minSplashTime = Future.delayed(const Duration(seconds: 2));
 
-    final supabaseInit = Supabase.initialize(
-      url: 'https://pyesewttbjqtniixrhvc.supabase.co',
-      anonKey:
-          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZXNld3R0YmpxdG5paXhyaHZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk4NTI5ODAsImV4cCI6MjA4NTQyODk4MH0.Z71ogOpR-oD_WXClMXGlf7UUHNEZ09B63_TyrDboP4c',
-    );
-
     final localeInit = initializeDateFormatting('id', null); // Added
     final printerInit = BluetoothPrinterService().init();
 
-    await Future.wait([minSplashTime, supabaseInit, localeInit, printerInit]);
+    await Future.wait([minSplashTime, localeInit, printerInit]);
   }
 
   @override
@@ -135,8 +146,13 @@ class _RootAppState extends State<RootApp> {
                 // JIKA INITIALIZATION SELESAI, CEK AUTH
                 return StreamBuilder<AuthState>(
                   stream: Supabase.instance.client.auth.onAuthStateChange,
+                  initialData: AuthState(
+                    AuthChangeEvent.initialSession,
+                    Supabase.instance.client.auth.currentSession,
+                  ),
                   builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
+                    if (snapshot.connectionState == ConnectionState.waiting &&
+                        snapshot.data == null) {
                       return const Scaffold(
                         body: Center(child: CircularProgressIndicator()),
                       );
@@ -182,17 +198,30 @@ class _RootAppState extends State<RootApp> {
                   if (user == null) {
                     page = const LoginPage();
                   } else {
-                    // We need storeId. Since onGenerateRoute is sync,
-                    // and we don't have storeId easily here without a future,
-                    // it's safer to use a placeholder or have HistoryPage fetch its own storeId if it's null.
-                    // However, we already have HistoryPage requiring storeId.
-                    // For now, I'll update HistoryPage to accept optional storeId and fetch if null.
                     page = const HistoryPage(storeId: null);
                   }
+                  break;
+                case '/printer-settings':
+                  page = const PrinterSettingsPage();
                   break;
                 default:
                   return null;
               }
+
+              // SAVE LAST ROUTE
+              if (settings.name != null &&
+                  [
+                    '/admin',
+                    '/kasir',
+                    '/order-history',
+                    '/attendance',
+                    '/printer-settings',
+                  ].contains(settings.name)) {
+                SharedPreferences.getInstance().then((prefs) {
+                  prefs.setString('last_route', settings.name!);
+                });
+              }
+
               return CustomPageRoute(builder: (_) => page, settings: settings);
             },
           ),
@@ -238,13 +267,15 @@ class AuthGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Map<String, dynamic>>(
-      // Mengambil role dari tabel profiles berdasarkan ID user yang login
-      future: supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', supabase.auth.currentUser!.id)
-          .single(),
+    return FutureBuilder<List<dynamic>>(
+      future: Future.wait([
+        supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', supabase.auth.currentUser?.id ?? '')
+            .maybeSingle(),
+        SharedPreferences.getInstance(),
+      ]),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -252,18 +283,82 @@ class AuthGate extends StatelessWidget {
           );
         }
 
-        if (snapshot.hasData) {
-          final String role = snapshot.data!['role'];
-          // Arahkan admin ke AdminPage, sisanya ke KasirPage
-          if (role == 'admin' || role == 'owner') {
-            return const AdminPage();
-          } else {
-            return const KasirPage();
-          }
+        if (snapshot.hasError ||
+            !snapshot.hasData ||
+            snapshot.data![0] == null) {
+          return Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                  const SizedBox(height: 16),
+                  const Text("Gagal memuat profil"),
+                  TextButton(
+                    onPressed: () =>
+                        Navigator.pushReplacementNamed(context, '/'),
+                    child: const Text("Coba Lagi"),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.remove('last_route');
+                      await supabase.auth.signOut();
+                    },
+                    child: const Text("Keluar"),
+                  ),
+                ],
+              ),
+            ),
+          );
         }
 
-        // Jika data profile tidak ketemu, balikkan ke Login
-        return const LoginPage();
+        final profileData = snapshot.data![0] as Map<String, dynamic>;
+        final prefs = snapshot.data![1] as SharedPreferences;
+
+        final String role = profileData['role'];
+        final String? lastRoute = prefs.getString('last_route');
+
+        Widget target;
+        bool isAdmin = role == 'admin' || role == 'owner';
+
+        if (lastRoute != null) {
+          if (isAdmin &&
+              (lastRoute == '/admin' ||
+                  lastRoute == '/order-history' ||
+                  lastRoute == '/attendance' ||
+                  lastRoute == '/printer-settings')) {
+            if (lastRoute == '/order-history') {
+              target = const HistoryPage(storeId: null);
+            } else if (lastRoute == '/attendance') {
+              target = const AttendancePage();
+            } else if (lastRoute == '/printer-settings') {
+              target = const PrinterSettingsPage();
+            } else {
+              target = const AdminPage();
+            }
+          } else if (!isAdmin &&
+              (lastRoute == '/kasir' ||
+                  lastRoute == '/order-history' ||
+                  lastRoute == '/attendance' ||
+                  lastRoute == '/printer-settings')) {
+            if (lastRoute == '/order-history') {
+              target = const HistoryPage(storeId: null);
+            } else if (lastRoute == '/attendance') {
+              target = const AttendancePage();
+            } else if (lastRoute == '/printer-settings') {
+              target = const PrinterSettingsPage();
+            } else {
+              target = const KasirPage();
+            }
+          } else {
+            target = isAdmin ? const AdminPage() : const KasirPage();
+          }
+        } else {
+          target = isAdmin ? const AdminPage() : const KasirPage();
+        }
+
+        return target;
       },
     );
   }

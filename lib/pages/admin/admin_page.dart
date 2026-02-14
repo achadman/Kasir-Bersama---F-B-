@@ -22,6 +22,10 @@ import 'widgets/admin_drawer.dart';
 import 'widgets/low_stock_dialog.dart';
 import 'report/shift_report_page.dart';
 import 'report/profit_loss_page.dart';
+import 'widgets/admin_navigation_rail.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+// ... imports ...
 
 class AdminPage extends StatefulWidget {
   const AdminPage({super.key});
@@ -31,6 +35,7 @@ class AdminPage extends StatefulWidget {
 }
 
 class _AdminPageState extends State<AdminPage> {
+  // ... existing variables ...
   final supabase = Supabase.instance.client;
   final currencyFormat = NumberFormat.currency(
     locale: 'id',
@@ -49,6 +54,7 @@ class _AdminPageState extends State<AdminPage> {
   }
 
   void _showLowStockAlert(AdminController controller) {
+    // ... existing implementation ...
     if (!mounted) return;
     showDialog(
       context: context,
@@ -69,6 +75,8 @@ class _AdminPageState extends State<AdminPage> {
     );
   }
 
+  int _selectedIndex = 0;
+
   @override
   Widget build(BuildContext context) {
     return Consumer<AdminController>(
@@ -83,341 +91,413 @@ class _AdminPageState extends State<AdminPage> {
           return _buildNoStoreView(controller);
         }
 
-        return Scaffold(
-          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-          drawer: AdminDrawer(
-            userName: controller.userName,
-            profileUrl: controller.profileUrl,
-            storeName: controller.storeName,
-            storeLogo: controller.storeLogo,
-            primaryColor: _primaryColor,
-            onProfileTap: () async {
-              Navigator.pop(context);
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ProfilePage(storeId: controller.storeId!),
-                ),
-              );
-              controller.loadInitialData();
-            },
-            onInventoryTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => InventoryPage(storeId: controller.storeId!),
-              ),
-            ),
-            onCategoryTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => CategoryPage(storeId: controller.storeId!),
-              ),
-            ),
-            onKasirTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const KasirPage()),
-            ),
-            onEmployeeTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => EmployeePage(storeId: controller.storeId!),
-              ),
-            ),
-            onHistoryTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => HistoryPage(storeId: controller.storeId!),
-              ),
-            ),
-            onAnalyticsTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AnalyticsPage()),
-            ),
-            onPrinterTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const PrinterSettingsPage()),
-            ),
-            role: controller.role,
-            permissions: controller.permissions,
-            onLogoutTap: () async {
-              final shouldLogout = await showCupertinoDialog<bool>(
-                context: context,
-                builder: (context) => CupertinoAlertDialog(
-                  title: const Text("Konfirmasi Keluar"),
-                  content: const Text(
-                    "Apakah Anda yakin ingin keluar dari aplikasi?",
-                  ),
-                  actions: [
-                    CupertinoDialogAction(
-                      child: const Text("Batal"),
-                      onPressed: () => Navigator.pop(context, false),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            // Lower breakpoint to 700 for better tablet support
+            final isWideScreen = constraints.maxWidth > 700;
+
+            if (isWideScreen) {
+              return Scaffold(
+                backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                body: Row(
+                  children: [
+                    AdminNavigationRail(
+                      selectedIndex: _selectedIndex,
+                      onDestinationSelected: (index) =>
+                          _onRailDestinationSelected(index, controller),
+                      storeLogo: controller.storeLogo,
+                      onLogout: _handleLogout,
                     ),
-                    CupertinoDialogAction(
-                      isDestructiveAction: true,
-                      child: const Text("Keluar"),
-                      onPressed: () => Navigator.pop(context, true),
-                    ),
+                    const VerticalDivider(thickness: 1, width: 1),
+                    const SizedBox(width: 20), // Added spacing
+                    Expanded(child: _getSelectedPage(controller)),
                   ],
                 ),
               );
+            }
 
-              if (shouldLogout == true) {
-                await supabase.auth.signOut();
-                if (!context.mounted) return;
-                Navigator.pushReplacementNamed(context, '/login');
-              }
-            },
-          ),
-          body: RefreshIndicator(
-            onRefresh: controller.loadInitialData,
-            color: _primaryColor,
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              ),
-              child: Column(
-                children: [
-                  AdminHeader(
-                    userName: controller.storeName,
-                    profileUrl: controller.storeLogo,
-                    storeName: controller.storeName,
-                    todaySales: controller.todaySales,
-                    transactionCount: controller.transactionCount,
-                    lowStockCount: controller.lowStockCount,
-                    currencyFormat: currencyFormat,
-                    primaryColor: _primaryColor,
-                    onProfileTap: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              ProfilePage(storeId: controller.storeId!),
-                        ),
-                      );
-                      controller.loadInitialData();
-                    },
-                    onLowStockTap: () => _showLowStockAlert(controller),
-                    onSalesTap:
-                        (controller.role == 'owner' ||
-                            controller.role == 'admin')
-                        ? () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  LaporanPage(storeId: controller.storeId!),
-                            ),
-                          )
-                        : () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  "Akses Dibatasi: Hanya Owner yang dapat melihat laporan detail.",
-                                ),
-                                backgroundColor: Colors.orange,
-                              ),
-                            );
-                          },
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        if (controller.role == 'owner' ||
-                            controller.role == 'admin' ||
-                            (controller.permissions?['manage_inventory'] ??
-                                true) ||
-                            (controller.permissions?['manage_categories'] ??
-                                true))
-                          _buildAnimatedSection(
-                            delay: 0,
-                            child: AdminMenuSection(
-                              title: "Manajemen Stok",
-                              icon: CupertinoIcons.cube_box,
-                              items: [
-                                if (controller.role == 'owner' ||
-                                    controller.role == 'admin' ||
-                                    (controller
-                                            .permissions?['manage_inventory'] ??
-                                        true))
-                                  AdminMenuItem(
-                                    label: "Barang",
-                                    icon: CupertinoIcons.doc_text_viewfinder,
-                                    color: Colors.blue,
-                                    onTap: () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => InventoryPage(
-                                          storeId: controller.storeId!,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                if (controller.role == 'owner' ||
-                                    controller.role == 'admin' ||
-                                    (controller
-                                            .permissions?['manage_categories'] ??
-                                        true))
-                                  AdminMenuItem(
-                                    label: "Kategori",
-                                    icon: CupertinoIcons.grid,
-                                    color: Colors.indigo,
-                                    onTap: () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => CategoryPage(
-                                          storeId: controller.storeId!,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                AdminMenuItem(
-                                  label: "Pembelian",
-                                  icon: CupertinoIcons.bag,
-                                  color: Colors.lightBlue,
-                                  onTap: () {},
-                                ),
-                              ],
-                            ),
-                          ),
-                        const SizedBox(height: 20),
-                        _buildAnimatedSection(
-                          delay: 200,
-                          child: AdminMenuSection(
-                            title: "Operasional Kasir",
-                            icon: CupertinoIcons.cart,
-                            items: [
-                              if (controller.role == 'owner' ||
-                                  controller.role == 'admin' ||
-                                  (controller.permissions?['pos_access'] ??
-                                      true))
-                                AdminMenuItem(
-                                  label: "Transaksi",
-                                  icon: CupertinoIcons.cart_badge_plus,
-                                  color: Colors.orange,
-                                  onTap: () async {
-                                    await Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => const KasirPage(),
-                                      ),
-                                    );
-                                    controller.fetchDashboardStats();
-                                  },
-                                ),
-                              if (controller.role == 'owner' ||
-                                  controller.role == 'admin' ||
-                                  (controller.permissions?['view_history'] ??
-                                      true))
-                                AdminMenuItem(
-                                  label: "Riwayat",
-                                  icon: CupertinoIcons.doc_text,
-                                  color: Colors.purple,
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => HistoryPage(
-                                        storeId: controller.storeId!,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              if (controller.role == 'owner' ||
-                                  controller.role == 'admin' ||
-                                  (controller.permissions?['manage_printer'] ??
-                                      true))
-                                AdminMenuItem(
-                                  label: "Printer",
-                                  icon: CupertinoIcons.printer,
-                                  color: Colors.blueGrey,
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          const PrinterSettingsPage(),
-                                    ),
-                                  ),
-                                ),
-                              if (controller.role == 'owner' ||
-                                  controller.role == 'admin')
-                                AdminMenuItem(
-                                  label: "Karyawan",
-                                  icon: CupertinoIcons.person_2,
-                                  color: Colors.cyan,
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => EmployeePage(
-                                        storeId: controller.storeId!,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        if (controller.role == 'owner' ||
-                            controller.role == 'admin' ||
-                            (controller.permissions?['view_reports'] ?? false))
-                          _buildAnimatedSection(
-                            delay: 400,
-                            child: AdminMenuSection(
-                              title: "Analitik & Laporan",
-                              icon: CupertinoIcons.graph_square,
-                              items: [
-                                AdminMenuItem(
-                                  label: "Lap. Shift",
-                                  icon: CupertinoIcons.list_bullet_indent,
-                                  color: Colors.blueAccent,
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => ShiftReportPage(
-                                        storeId: controller.storeId!,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                AdminMenuItem(
-                                  label: "Penjualan",
-                                  icon: CupertinoIcons.graph_circle,
-                                  color: Colors.green,
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => LaporanPage(
-                                        storeId: controller.storeId!,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                AdminMenuItem(
-                                  label: "Laba Rugi",
-                                  icon: CupertinoIcons.money_dollar_circle,
-                                  color: Colors.teal,
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => ProfitLossPage(
-                                        storeId: controller.storeId!,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        const SizedBox(height: 40),
-                      ],
+            return Scaffold(
+              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              drawer: AdminDrawer(
+                userName: controller.userName,
+                profileUrl: controller.profileUrl,
+                storeName: controller.storeName,
+                storeLogo: controller.storeLogo,
+                primaryColor: _primaryColor,
+                onProfileTap: () async {
+                  Navigator.pop(context);
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ProfilePage(storeId: controller.storeId!),
                     ),
+                  );
+                  controller.loadInitialData();
+                },
+                onInventoryTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => InventoryPage(storeId: controller.storeId!),
                   ),
-                ],
+                ),
+                onCategoryTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CategoryPage(storeId: controller.storeId!),
+                  ),
+                ),
+                onKasirTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const KasirPage()),
+                ),
+                onEmployeeTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => EmployeePage(storeId: controller.storeId!),
+                  ),
+                ),
+                onHistoryTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => HistoryPage(storeId: controller.storeId!),
+                  ),
+                ),
+                onAnalyticsTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AnalyticsPage()),
+                ),
+                onPrinterTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const PrinterSettingsPage(),
+                  ),
+                ),
+                role: controller.role,
+                permissions: controller.permissions,
+                onLogoutTap: _handleLogout,
               ),
-            ),
-          ),
+              body: _getSelectedPage(controller),
+            );
+          },
         );
       },
     );
+  }
+
+  void _onRailDestinationSelected(int index, AdminController controller) {
+    setState(() {
+      _selectedIndex = index;
+    });
+
+    // Handle special cases (push external pages) if needed, currently we switch in-place
+    // Note: If you want Kasir to still be full screen, you can check index == 3 and push.
+    if (index == 3) {
+      // Kasir POS usually needs full screen
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const KasirPage()),
+      );
+      // Reset index back to previous if you don't want 'Kasir' to remain selected after pop
+      // Or keep it selected if you want to indicate where they were.
+    }
+  }
+
+  Widget _getSelectedPage(AdminController controller) {
+    switch (_selectedIndex) {
+      case 0:
+        return _buildDashboardContent(controller);
+      case 1:
+        return InventoryPage(storeId: controller.storeId!);
+      case 2:
+        return CategoryPage(storeId: controller.storeId!);
+      // case 3 is Kasir (handled as push usually, but if embedded:)
+      case 3:
+        // If we want embedded Kasir, return it here.
+        // But POS usually wants to hide admin UI.
+        // Let's keep it as push for now in logic, or placeholder here.
+        return const Center(child: Text("Kasir opened in new window"));
+      case 4:
+        return EmployeePage(storeId: controller.storeId!);
+      case 5:
+        return HistoryPage(storeId: controller.storeId!);
+      case 6:
+        return const AnalyticsPage();
+      case 7:
+        return const PrinterSettingsPage();
+      default:
+        return _buildDashboardContent(controller);
+    }
+  }
+
+  Widget _buildDashboardContent(AdminController controller) {
+    return RefreshIndicator(
+      onRefresh: controller.loadInitialData,
+      color: _primaryColor,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        child: Column(
+          children: [
+            AdminHeader(
+              userName: controller.storeName,
+              profileUrl: controller.storeLogo,
+              storeName: controller.storeName,
+              todaySales: controller.todaySales,
+              transactionCount: controller.transactionCount,
+              lowStockCount: controller.lowStockCount,
+              currencyFormat: currencyFormat,
+              primaryColor: _primaryColor,
+              onProfileTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ProfilePage(storeId: controller.storeId!),
+                  ),
+                );
+                controller.loadInitialData();
+              },
+              onLowStockTap: () => _showLowStockAlert(controller),
+              onSalesTap:
+                  (controller.role == 'owner' || controller.role == 'admin')
+                  ? () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            LaporanPage(storeId: controller.storeId!),
+                      ),
+                    )
+                  : () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            "Akses Dibatasi: Hanya Owner yang dapat melihat laporan detail.",
+                          ),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    },
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  if (controller.role == 'owner' ||
+                      controller.role == 'admin' ||
+                      (controller.permissions?['manage_inventory'] ?? true) ||
+                      (controller.permissions?['manage_categories'] ?? true))
+                    _buildAnimatedSection(
+                      delay: 0,
+                      child: AdminMenuSection(
+                        title: "Manajemen Stok",
+                        icon: CupertinoIcons.cube_box,
+                        items: [
+                          if (controller.role == 'owner' ||
+                              controller.role == 'admin' ||
+                              (controller.permissions?['manage_inventory'] ??
+                                  true))
+                            AdminMenuItem(
+                              label: "Barang",
+                              icon: CupertinoIcons.doc_text_viewfinder,
+                              color: Colors.blue,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => InventoryPage(
+                                    storeId: controller.storeId!,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (controller.role == 'owner' ||
+                              controller.role == 'admin' ||
+                              (controller.permissions?['manage_categories'] ??
+                                  true))
+                            AdminMenuItem(
+                              label: "Kategori",
+                              icon: CupertinoIcons.grid,
+                              color: Colors.indigo,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => CategoryPage(
+                                    storeId: controller.storeId!,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          AdminMenuItem(
+                            label: "Laporan Analitik",
+                            icon: CupertinoIcons.chart_bar_square,
+                            color: Colors.pinkAccent,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const AnalyticsPage(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 20),
+                  _buildAnimatedSection(
+                    delay: 200,
+                    child: AdminMenuSection(
+                      title: "Operasional Kasir",
+                      icon: CupertinoIcons.cart,
+                      items: [
+                        if (controller.role == 'owner' ||
+                            controller.role == 'admin' ||
+                            (controller.permissions?['pos_access'] ?? true))
+                          AdminMenuItem(
+                            label: "Transaksi",
+                            icon: CupertinoIcons.cart_badge_plus,
+                            color: Colors.orange,
+                            onTap: () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const KasirPage(),
+                                ),
+                              );
+                              controller.fetchDashboardStats();
+                            },
+                          ),
+                        if (controller.role == 'owner' ||
+                            controller.role == 'admin' ||
+                            (controller.permissions?['view_history'] ?? true))
+                          AdminMenuItem(
+                            label: "Riwayat",
+                            icon: CupertinoIcons.doc_text,
+                            color: Colors.purple,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    HistoryPage(storeId: controller.storeId!),
+                              ),
+                            ),
+                          ),
+                        if (controller.role == 'owner' ||
+                            controller.role == 'admin' ||
+                            (controller.permissions?['manage_printer'] ?? true))
+                          AdminMenuItem(
+                            label: "Printer",
+                            icon: CupertinoIcons.printer,
+                            color: Colors.blueGrey,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const PrinterSettingsPage(),
+                              ),
+                            ),
+                          ),
+                        if (controller.role == 'owner' ||
+                            controller.role == 'admin')
+                          AdminMenuItem(
+                            label: "Karyawan",
+                            icon: CupertinoIcons.person_2,
+                            color: Colors.cyan,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    EmployeePage(storeId: controller.storeId!),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  if (controller.role == 'owner' ||
+                      controller.role == 'admin' ||
+                      (controller.permissions?['view_reports'] ?? false))
+                    _buildAnimatedSection(
+                      delay: 400,
+                      child: AdminMenuSection(
+                        title: "Analitik & Laporan",
+                        icon: CupertinoIcons.graph_square,
+                        items: [
+                          AdminMenuItem(
+                            label: "Lap. Shift",
+                            icon: CupertinoIcons.list_bullet_indent,
+                            color: Colors.blueAccent,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ShiftReportPage(
+                                  storeId: controller.storeId!,
+                                ),
+                              ),
+                            ),
+                          ),
+                          AdminMenuItem(
+                            label: "Penjualan",
+                            icon: CupertinoIcons.graph_circle,
+                            color: Colors.green,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    LaporanPage(storeId: controller.storeId!),
+                              ),
+                            ),
+                          ),
+                          AdminMenuItem(
+                            label: "Laba Rugi",
+                            icon: CupertinoIcons.money_dollar_circle,
+                            color: Colors.teal,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ProfitLossPage(
+                                  storeId: controller.storeId!,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 40),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleLogout() async {
+    final shouldLogout = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text("Konfirmasi Keluar"),
+        content: const Text("Apakah Anda yakin ingin keluar dari aplikasi?"),
+        actions: [
+          CupertinoDialogAction(
+            child: const Text("Batal"),
+            onPressed: () => Navigator.pop(context, false),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            child: const Text("Keluar"),
+            onPressed: () => Navigator.pop(context, true),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout == true) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('last_route');
+      await supabase.auth.signOut();
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, '/login');
+    }
   }
 
   Widget _buildNoStoreView(AdminController controller) {

@@ -69,34 +69,33 @@ class AdminMenuSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
-          items.length <= 3
-              ? Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: items.map((item) {
-                    return _buildItem(context, item);
-                  }).toList(),
-                )
-              : LayoutBuilder(
-                  builder: (context, constraints) {
-                    final crossAxisCount = 2; // Fixed 2 columns when > 3 items
-                    final spacing = 16.0;
-                    final totalSpacing = spacing * (crossAxisCount - 1);
-                    final itemWidth =
-                        (constraints.maxWidth - totalSpacing) / crossAxisCount;
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // Calculate number of columns based on available width
+              // ~85px per item allows 4 items on standard 360px-400px screens
+              final int crossAxisCount = (constraints.maxWidth / 85)
+                  .floor()
+                  .clamp(3, 8);
 
-                    return Wrap(
-                      alignment: WrapAlignment.start,
-                      runSpacing: 16,
-                      spacing: spacing,
-                      children: items.map((item) {
-                        return SizedBox(
-                          width: itemWidth,
-                          child: _buildItem(context, item),
-                        );
-                      }).toList(),
-                    );
-                  },
-                ),
+              const double spacing = 12.0;
+              // Calculate exact width for each item to fill the row evenly
+              final double itemWidth =
+                  (constraints.maxWidth - (spacing * (crossAxisCount - 1))) /
+                  crossAxisCount;
+
+              return Wrap(
+                alignment: WrapAlignment.start,
+                runSpacing: 20,
+                spacing: spacing,
+                children: items.map((item) {
+                  return SizedBox(
+                    width: itemWidth,
+                    child: _buildItem(context, item),
+                  );
+                }).toList(),
+              );
+            },
+          ),
         ],
       ),
     );

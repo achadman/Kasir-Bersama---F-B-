@@ -1,8 +1,7 @@
-import 'dart:typed_data';
 import 'package:blue_thermal_printer/blue_thermal_printer.dart';
-import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class BluetoothPrinterService {
   static final BluetoothPrinterService _instance =
@@ -21,6 +20,7 @@ class BluetoothPrinterService {
   static const String _prefKeyName = 'printer_name';
 
   Future<void> init() async {
+    if (kIsWeb) return;
     _isConnected = (await _printer.isConnected) ?? false;
     if (!_isConnected) {
       await _tryAutoConnect();
@@ -148,21 +148,9 @@ class BluetoothPrinterService {
     }
 
     _printer.printCustom("--------------------------------", 1, 1);
-    _printer.printLeftRight(
-      "TOTAL",
-      currencyFormat.format(totalAmount),
-      2,
-    );
-    _printer.printLeftRight(
-      "Bayar",
-      currencyFormat.format(cashReceived),
-      1,
-    );
-    _printer.printLeftRight(
-      "Kembalian",
-      currencyFormat.format(change),
-      1,
-    );
+    _printer.printLeftRight("TOTAL", currencyFormat.format(totalAmount), 2);
+    _printer.printLeftRight("Bayar", currencyFormat.format(cashReceived), 1);
+    _printer.printLeftRight("Kembalian", currencyFormat.format(change), 1);
 
     _printer.printNewLine();
     _printer.printCustom("Terima kasih sudah berbelanja", 1, 1);

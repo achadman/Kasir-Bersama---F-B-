@@ -96,79 +96,99 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
   ) {
     final storeId = context.read<AdminController>().storeId;
 
-    return GridView.count(
-      crossAxisCount: 2,
-      crossAxisSpacing: 15,
-      mainAxisSpacing: 15,
-      shrinkWrap: true,
-      childAspectRatio: 1.1, // Adjust for card shape
-      physics: const NeverScrollableScrollPhysics(),
-      children: [
-        // 1. Employee Count
-        _buildGridCard(
-          "Total Karyawan",
-          "${controller.employeeCount} Orang",
-          CupertinoIcons.person_2_fill,
-          Colors.blue,
-          () {
-            if (storeId != null) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => EmployeePage(storeId: storeId),
+    // Define modern colors
+    const employeeColor = Color(0xFF3B82F6); // Modern Blue
+    const transactionColor = Color(0xFFF59E0B); // Modern Amber
+    const revenueColor = Color(0xFF10B981); // Modern Emerald
+    const productColor = Color(0xFF8B5CF6); // Modern Violet
+
+    final cards = [
+      _buildGridCard(
+        "Total Karyawan",
+        "${controller.employeeCount} Orang",
+        CupertinoIcons.person_2_fill,
+        employeeColor,
+        () {
+          if (storeId != null) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => EmployeePage(storeId: storeId)),
+            );
+          }
+        },
+      ),
+      _buildGridCard(
+        "Total Transaksi",
+        "${controller.totalTransactionCount} Trx",
+        CupertinoIcons.doc_text_fill,
+        transactionColor,
+        () {
+          if (storeId != null) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => HistoryPage(storeId: storeId)),
+            );
+          }
+        },
+      ),
+      _buildGridCard(
+        "Total Revenue",
+        currency.format(controller.totalSales),
+        CupertinoIcons.money_dollar_circle_fill,
+        revenueColor,
+        null,
+      ),
+      _buildGridCard(
+        "Total Produk",
+        "${controller.totalProductCount} Item",
+        CupertinoIcons.cube_box_fill,
+        productColor,
+        () {
+          if (storeId != null) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => InventoryPage(storeId: storeId),
+              ),
+            );
+          }
+        },
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Threshold for landscape/desktop mode (e.g., tablets or wide screens)
+        bool isWide = constraints.maxWidth > 600;
+
+        if (isWide) {
+          // Landscape/Desktop: Row layout
+          return Row(
+            children: cards.map((card) {
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                  child: SizedBox(
+                    height: 130, // Increased height to prevent overflow
+                    child: card,
+                  ),
                 ),
               );
-            }
-          },
-        ),
-
-        // 2. Transaction Count
-        _buildGridCard(
-          "Total Transaksi",
-          "${controller.totalTransactionCount} Trx",
-          CupertinoIcons.doc_text_fill,
-          Colors.orange,
-          () {
-            if (storeId != null) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => HistoryPage(storeId: storeId),
-                ),
-              );
-            }
-          },
-        ),
-
-        // 3. Revenue (All Time)
-        _buildGridCard(
-          "Total Revenue",
-          currency.format(
-            controller.totalSales,
-          ), // Use totalsales for all time logic if applicable, otherwise use specific all time fetch
-          CupertinoIcons.money_dollar_circle_fill,
-          Colors.green,
-          null, // Not clickable
-        ),
-
-        // 4. Products/Stock
-        _buildGridCard(
-          "Total Produk",
-          "${controller.totalProductCount} Item",
-          CupertinoIcons.cube_box_fill,
-          Colors.purple,
-          () {
-            if (storeId != null) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => InventoryPage(storeId: storeId),
-                ),
-              );
-            }
-          },
-        ),
-      ],
+            }).toList(),
+          );
+        } else {
+          // Portrait/Phone: Grid layout
+          return GridView.count(
+            crossAxisCount: 2,
+            crossAxisSpacing: 15,
+            mainAxisSpacing: 15,
+            shrinkWrap: true,
+            childAspectRatio: 1.1,
+            physics: const NeverScrollableScrollPhysics(),
+            children: cards,
+          );
+        }
+      },
     );
   }
 
@@ -186,15 +206,15 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: color.withValues(alpha: 0.2)),
+            border: Border.all(color: color.withValues(alpha: 0.15)),
             boxShadow: [
               BoxShadow(
-                color: color.withValues(alpha: 0.05),
-                blurRadius: 10,
+                color: color.withValues(alpha: 0.08),
+                blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
             ],
@@ -203,48 +223,52 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: color, size: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, color: color, size: 20),
+                  ),
+                  if (isClickable)
+                    Icon(
+                      CupertinoIcons.arrow_right,
+                      size: 14,
+                      color: Colors.grey[400],
+                    ),
+                ],
               ),
+
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
+                    value,
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
                     title,
                     style: GoogleFonts.inter(
-                      fontSize: 12,
-                      color: Colors.grey,
+                      fontSize: 11,
+                      color: Colors.grey[600],
                       fontWeight: FontWeight.w500,
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      value,
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                        color: Theme.of(context).textTheme.bodyLarge?.color,
-                      ),
-                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
-              if (isClickable)
-                Align(
-                  alignment: Alignment.bottomRight,
-                  child: Icon(
-                    CupertinoIcons.arrow_right,
-                    size: 16,
-                    color: Colors.grey[400],
-                  ),
-                ),
             ],
           ),
         ),

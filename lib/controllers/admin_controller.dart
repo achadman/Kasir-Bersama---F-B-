@@ -18,6 +18,7 @@ class AdminController extends ChangeNotifier {
   int _lowStockCount = 0;
   List<Map<String, dynamic>> _lowStockItems = [];
   int _transactionCount = 0;
+  Map<String, dynamic>? _userProfile;
 
   // Getters
   String? get userId => _userId;
@@ -28,6 +29,7 @@ class AdminController extends ChangeNotifier {
   String? get storeLogo => _storeLogo;
   String? get role => _role;
   Map<String, dynamic>? get permissions => _permissions;
+  Map<String, dynamic>? get userProfile => _userProfile;
   bool get isInitializing => _isInitializing;
   double get todaySales => _todaySales;
   int get lowStockCount => _lowStockCount;
@@ -52,6 +54,7 @@ class AdminController extends ChangeNotifier {
         _role = profile['role'];
         _profileUrl = profile['avatar_url'];
         _permissions = profile['permissions'];
+        _userProfile = profile;
 
         debugPrint(
           "AdminController: Profile loaded. userId: $_userId, storeId: $_storeId, role: $_role",

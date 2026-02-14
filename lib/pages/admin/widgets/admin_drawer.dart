@@ -42,32 +42,37 @@ class AdminDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF1A1C1E) : Colors.white;
+
     return Drawer(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      elevation: 0,
+      backgroundColor: bgColor,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.horizontal(right: Radius.circular(32)),
+        borderRadius: BorderRadius.horizontal(right: Radius.circular(0)),
       ),
       child: Column(
         children: [
-          _buildDrawerHeader(),
+          _buildModernHeader(context),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               children: [
-                _buildDrawerSectionTitle("UTAMA"),
-                _buildDrawerItem(
-                  context: context,
+                _buildSectionTitle("UTAMA"),
+                _buildModernItem(
+                  context,
                   icon: CupertinoIcons.square_grid_2x2,
                   label: "Dashboard",
                   onTap: () => Navigator.pop(context),
                   isActive: true,
                 ),
-                _buildDrawerSectionTitle("OPERASIONAL"),
+                _buildSectionTitle("OPERASIONAL"),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
                     (permissions?['manage_inventory'] ?? true))
-                  _buildDrawerItem(
-                    context: context,
+                  _buildModernItem(
+                    context,
                     icon: CupertinoIcons.cube_box,
                     label: "Inventori Barang",
                     onTap: () {
@@ -78,8 +83,8 @@ class AdminDrawer extends StatelessWidget {
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
                     (permissions?['manage_categories'] ?? true))
-                  _buildDrawerItem(
-                    context: context,
+                  _buildModernItem(
+                    context,
                     icon: CupertinoIcons.grid,
                     label: "Manajemen Kategori",
                     onTap: () {
@@ -87,17 +92,17 @@ class AdminDrawer extends StatelessWidget {
                       onCategoryTap();
                     },
                   ),
-                _buildDrawerItem(
-                  context: context,
+                _buildModernItem(
+                  context,
                   icon: CupertinoIcons.bag,
                   label: "Data Pembelian",
-                  onTap: () {},
+                  onTap: () {}, // Pending implementation
                 ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
                     (permissions?['pos_access'] ?? true))
-                  _buildDrawerItem(
-                    context: context,
+                  _buildModernItem(
+                    context,
                     icon: CupertinoIcons.cart,
                     label: "Kasir (POS)",
                     onTap: () {
@@ -107,8 +112,8 @@ class AdminDrawer extends StatelessWidget {
                   ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin')
-                  _buildDrawerItem(
-                    context: context,
+                  _buildModernItem(
+                    context,
                     icon: CupertinoIcons.person_2,
                     label: "Manajemen Karyawan",
                     onTap: () {
@@ -119,8 +124,8 @@ class AdminDrawer extends StatelessWidget {
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
                     (permissions?['view_history'] ?? true))
-                  _buildDrawerItem(
-                    context: context,
+                  _buildModernItem(
+                    context,
                     icon: CupertinoIcons.doc_text,
                     label: "Riwayat Transaksi",
                     onTap: () {
@@ -131,8 +136,8 @@ class AdminDrawer extends StatelessWidget {
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
                     (permissions?['manage_printer'] ?? true))
-                  _buildDrawerItem(
-                    context: context,
+                  _buildModernItem(
+                    context,
                     icon: CupertinoIcons.printer,
                     label: "Pengaturan Printer",
                     onTap: () {
@@ -143,89 +148,141 @@ class AdminDrawer extends StatelessWidget {
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
                     (permissions?['view_reports'] ?? false)) ...[
-                  _buildDrawerSectionTitle("LAINNYA"),
-                  _buildDrawerItem(
-                    context: context,
+                  _buildSectionTitle("LAINNYA"),
+                  _buildModernItem(
+                    context,
                     icon: Icons.analytics_rounded,
                     label: "Laporan Analitik",
-                    color: primaryColor,
                     onTap: () {
                       Navigator.pop(context);
                       onAnalyticsTap();
                     },
+                    isSpecial: true,
                   ),
                 ],
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: _buildDrawerItem(
-              context: context,
-              icon: CupertinoIcons.power,
-              label: "Keluar Sesi",
-              color: Colors.red,
-              onTap: onLogoutTap,
-            ),
-          ),
+          _buildFooter(context, isDark),
         ],
       ),
     );
   }
 
-  Widget _buildDrawerHeader() {
+  Widget _buildModernHeader(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 60, 20, 30),
+      padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [primaryColor, primaryColor.withValues(alpha: 0.8)],
-        ),
+        color: primaryColor,
+        borderRadius: const BorderRadius.only(bottomRight: Radius.circular(32)),
+        boxShadow: [
+          BoxShadow(
+            color: primaryColor.withValues(alpha: 0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GestureDetector(
-            onTap: onProfileTap,
-            child: CircleAvatar(
-              radius: 35,
-              backgroundColor: Colors.white,
-              backgroundImage: profileUrl != null
-                  ? NetworkImage(profileUrl!)
-                  : null,
-              child: profileUrl == null
-                  ? const Icon(Icons.person, size: 40, color: Colors.grey)
-                  : null,
-            ),
-          ),
-          const SizedBox(height: 15),
-          GestureDetector(
-            onTap: onProfileTap,
-            child: Text(
-              userName ?? 'User',
-              style: GoogleFonts.poppins(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+          Row(
+            children: [
+              GestureDetector(
+                onTap: onProfileTap,
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 10,
+                      ),
+                    ],
+                  ),
+                  child: CircleAvatar(
+                    radius: 32,
+                    backgroundColor: Colors.white,
+                    backgroundImage: profileUrl != null
+                        ? NetworkImage(profileUrl!)
+                        : null,
+                    child: profileUrl == null
+                        ? Icon(Icons.person, size: 36, color: Colors.grey[400])
+                        : null,
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      userName ?? 'Admin',
+                      style: GoogleFonts.poppins(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        height: 1.2,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        role?.toUpperCase() ?? "STAFF",
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 20),
           Container(
-            margin: const EdgeInsets.only(top: 5),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(10),
+              color: Colors.white.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Text(
-              storeName ?? "Administrator",
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                color: Colors.white,
-                fontWeight: FontWeight.w500,
-              ),
+            child: Row(
+              children: [
+                const Icon(
+                  CupertinoIcons.building_2_fill,
+                  color: Colors.white70,
+                  size: 16,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    storeName ?? "Toko Saya",
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -233,13 +290,13 @@ class AdminDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildDrawerSectionTitle(String title) {
+  Widget _buildSectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 25, 16, 10),
+      padding: const EdgeInsets.fromLTRB(12, 24, 12, 8),
       child: Text(
         title,
         style: GoogleFonts.inter(
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.bold,
           color: Colors.grey[400],
           letterSpacing: 1.2,
@@ -248,36 +305,116 @@ class AdminDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildDrawerItem({
-    required BuildContext context,
+  Widget _buildModernItem(
+    BuildContext context, {
     required IconData icon,
     required String label,
     required VoidCallback onTap,
-    Color? color,
     bool isActive = false,
+    bool isSpecial = false,
   }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return ListTile(
-      leading: Icon(
-        icon,
-        color: isActive
-            ? primaryColor
-            : (color ?? (isDark ? Colors.white70 : Colors.grey[700])),
-      ),
-      title: Text(
-        label,
-        style: GoogleFonts.inter(
-          fontSize: 15,
-          fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-          color: isActive
-              ? primaryColor
-              : (color ?? (isDark ? Colors.white : Colors.grey[800])),
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final activeColor = isSpecial ? Colors.blue : primaryColor;
+    final activeBg = activeColor.withValues(alpha: 0.1);
+    final textColor = isActive
+        ? activeColor
+        : (isDark ? Colors.white70 : const Color(0xFF2D3436));
+    final iconColor = isActive
+        ? activeColor
+        : (isDark ? Colors.white54 : Colors.grey[500]);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: isActive ? activeBg : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 22, color: iconColor),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                      color: textColor,
+                    ),
+                  ),
+                ),
+                if (isActive)
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: activeColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      selected: isActive,
-      selectedTileColor: primaryColor.withValues(alpha: 0.05),
-      onTap: onTap,
+    );
+  }
+
+  Widget _buildFooter(BuildContext context, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            height: 1,
+            color: isDark ? Colors.white10 : Colors.grey[200],
+          ),
+          const SizedBox(height: 16),
+          InkWell(
+            onTap: onLogoutTap,
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.1)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(CupertinoIcons.power, color: Colors.red, size: 20),
+                  const SizedBox(width: 12),
+                  Text(
+                    "Keluar Sesi",
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.red,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            "Ver 1.0.0 • by PosKasirAsri",
+            style: GoogleFonts.inter(fontSize: 10, color: Colors.grey[400]),
+          ),
+        ],
+      ),
     );
   }
 }

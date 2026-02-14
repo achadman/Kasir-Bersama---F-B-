@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart'; // Added
 import '../../services/attendance_service.dart';
 import 'package:flutter/cupertino.dart';
 import '../../widgets/kasir_drawer.dart';
+import '../user/widgets/kasir_side_navigation.dart';
 
 class AttendancePage extends StatefulWidget {
   const AttendancePage({super.key});
@@ -263,193 +264,236 @@ class _AttendancePageState extends State<AttendancePage> {
     return Scaffold(
       backgroundColor: bgColor,
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: Text(
-          "Absensi Staff",
-          style: GoogleFonts.poppins(
-            color: textColor,
-            fontWeight: FontWeight.w600,
+      drawer: const KasirDrawer(currentRoute: '/attendance'),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isWideScreen = constraints.maxWidth > 900;
+
+          final mainContent = _isLoading
+              ? Center(child: CircularProgressIndicator(color: primaryColor))
+              : SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const SizedBox(height: 100), // Space for AppBar
+                        // Digital Clock
+                        Text(
+                          DateFormat('HH:mm:ss').format(_currentTime),
+                          style: GoogleFonts.poppins(
+                            fontSize: 48,
+                            fontWeight: FontWeight.bold,
+                            color: textColor,
+                          ),
+                        ),
+                        Text(
+                          DateFormat(
+                            'EEEE, d MMMM yyyy',
+                            'id',
+                          ).format(_currentTime),
+                          style: GoogleFonts.inter(
+                            fontSize: 16,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                        const SizedBox(height: 48),
+                        // Status Card
+                        _buildStatusCard(
+                          theme,
+                          textColor,
+                          statusText,
+                          statusColor,
+                        ),
+                        const SizedBox(height: 48),
+                        // Actions
+                        _buildActionsSection(),
+                        const SizedBox(height: 48),
+                      ],
+                    ),
+                  ),
+                );
+
+          final content = Scaffold(
+            backgroundColor: Colors.transparent, // Inherit from parent
+            appBar: AppBar(
+              title: Text(
+                "Absensi Staff",
+                style: GoogleFonts.poppins(
+                  color: textColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              centerTitle: true,
+              leading: isWideScreen
+                  ? const SizedBox.shrink()
+                  : Builder(
+                      builder: (context) => IconButton(
+                        icon: Icon(CupertinoIcons.bars, color: textColor),
+                        onPressed: () => Scaffold.of(this.context).openDrawer(),
+                      ),
+                    ),
+            ),
+            body: mainContent,
+          );
+
+          if (isWideScreen) {
+            return Row(
+              children: [
+                const KasirSideNavigation(currentRoute: '/attendance'),
+                Expanded(child: content),
+              ],
+            );
+          }
+
+          return content;
+        },
+      ),
+    );
+  }
+
+  Widget _buildStatusCard(
+    ThemeData theme,
+    Color textColor,
+    String statusText,
+    Color statusColor,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Text(
+            "Status Hari Ini",
+            style: GoogleFonts.inter(color: Colors.grey[500]),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            statusText,
+            style: GoogleFonts.poppins(
+              fontSize: 24,
+              fontWeight: FontWeight.w600,
+              color: statusColor,
+            ),
+          ),
+          if (_todayLog != null) ...[
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildTimeStat("Masuk", _todayLog!['clock_in'], textColor),
+                _buildTimeStat("Keluar", _todayLog!['clock_out'], textColor),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionsSection() {
+    if (_todayLog == null) {
+      return Column(
+        children: [
+          if (_imageFile != null)
+            _buildPhotoPreview()
+          else
+            TextButton.icon(
+              onPressed: _pickImage,
+              icon: const Icon(CupertinoIcons.camera),
+              label: const Text("Lampirkan Foto (Opsional)"),
+            ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildActionButton(
+                  "HADIR",
+                  Colors.green,
+                  CupertinoIcons.checkmark_circle,
+                  _handleClockIn,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildActionButton(
+                  "TIDAK HADIR",
+                  Colors.orange,
+                  CupertinoIcons.xmark_circle,
+                  _handleMarkAbsence,
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    } else if (_todayLog!['clock_out'] == null) {
+      return Column(
+        children: [
+          _buildActionButton(
+            _todayLog!['status'] == 'break'
+                ? "MASUK KEMBALI"
+                : "BERHENTI SEMENTARA",
+            _todayLog!['status'] == 'break' ? Colors.blue : Colors.grey[700]!,
+            _todayLog!['status'] == 'break'
+                ? CupertinoIcons.play_circle
+                : CupertinoIcons.pause_circle,
+            _handleToggleBreak,
+          ),
+          const SizedBox(height: 16),
+          _buildActionButton(
+            "CLOCK OUT",
+            Colors.red,
+            CupertinoIcons.square_arrow_right,
+            _handleClockOut,
+          ),
+        ],
+      );
+    } else {
+      return Text(
+        "Shift hari ini telah selesai.",
+        style: GoogleFonts.inter(color: Colors.grey),
+      );
+    }
+  }
+
+  Widget _buildPhotoPreview() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      height: 120,
+      width: 120,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        image: DecorationImage(
+          image: FileImage(_imageFile!),
+          fit: BoxFit.cover,
         ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: Icon(CupertinoIcons.bars, color: textColor),
-            onPressed: () => Scaffold.of(context).openDrawer(),
+      ),
+      child: Align(
+        alignment: Alignment.topRight,
+        child: GestureDetector(
+          onTap: () => setState(() => _imageFile = null),
+          child: const CircleAvatar(
+            radius: 12,
+            backgroundColor: Colors.red,
+            child: Icon(Icons.close, size: 16, color: Colors.white),
           ),
         ),
       ),
-      drawer: const KasirDrawer(currentRoute: '/attendance'),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: primaryColor))
-          : Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Digital Clock
-                  Text(
-                    DateFormat('HH:mm:ss').format(_currentTime),
-                    style: GoogleFonts.poppins(
-                      fontSize: 48,
-                      fontWeight: FontWeight.bold,
-                      color: textColor,
-                    ),
-                  ),
-                  Text(
-                    DateFormat('EEEE, d MMMM yyyy', 'id').format(_currentTime),
-                    style: GoogleFonts.inter(
-                      fontSize: 16,
-                      color: Colors.grey[500],
-                    ),
-                  ),
-
-                  const SizedBox(height: 48),
-
-                  // Status Card
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: theme.cardColor,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          "Status Hari Ini",
-                          style: GoogleFonts.inter(color: Colors.grey[500]),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          statusText,
-                          style: GoogleFonts.poppins(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w600,
-                            color: statusColor,
-                          ),
-                        ),
-                        if (_todayLog != null) ...[
-                          const SizedBox(height: 16),
-                          const Divider(),
-                          const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              _buildTimeStat(
-                                "Masuk",
-                                _todayLog!['clock_in'],
-                                textColor,
-                              ),
-                              _buildTimeStat(
-                                "Keluar",
-                                _todayLog!['clock_out'],
-                                textColor,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 48),
-
-                  // Actions
-                  if (_todayLog == null) ...[
-                    // Optional Photo Preview
-                    if (_imageFile != null)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 16),
-                        height: 120,
-                        width: 120,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          image: DecorationImage(
-                            image: FileImage(_imageFile!),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                        child: Align(
-                          alignment: Alignment.topRight,
-                          child: GestureDetector(
-                            onTap: () => setState(() => _imageFile = null),
-                            child: const CircleAvatar(
-                              radius: 12,
-                              backgroundColor: Colors.red,
-                              child: Icon(
-                                Icons.close,
-                                size: 16,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                      )
-                    else
-                      TextButton.icon(
-                        onPressed: _pickImage,
-                        icon: const Icon(CupertinoIcons.camera),
-                        label: const Text("Lampirkan Foto (Opsional)"),
-                      ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildActionButton(
-                            "HADIR",
-                            Colors.green,
-                            CupertinoIcons.checkmark_circle,
-                            _handleClockIn,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildActionButton(
-                            "TIDAK HADIR",
-                            Colors.orange,
-                            CupertinoIcons.xmark_circle,
-                            _handleMarkAbsence,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ] else if (_todayLog!['clock_out'] == null) ...[
-                    _buildActionButton(
-                      _todayLog!['status'] == 'break'
-                          ? "MASUK KEMBALI"
-                          : "BERHENTI SEMENTARA",
-                      _todayLog!['status'] == 'break'
-                          ? Colors.blue
-                          : Colors.grey[700]!,
-                      _todayLog!['status'] == 'break'
-                          ? CupertinoIcons.play_circle
-                          : CupertinoIcons.pause_circle,
-                      _handleToggleBreak,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildActionButton(
-                      "CLOCK OUT",
-                      Colors.red,
-                      CupertinoIcons.square_arrow_right,
-                      _handleClockOut,
-                    ),
-                  ] else
-                    Text(
-                      "Shift hari ini telah selesai.",
-                      style: GoogleFonts.inter(color: Colors.grey),
-                    ),
-                ],
-              ),
-            ),
     );
   }
 

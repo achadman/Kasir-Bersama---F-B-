@@ -18,96 +18,107 @@ class OnboardingPage extends StatelessWidget {
           ),
         ),
         child: SafeArea(
-          child: Column(
-            children: [
-              const Spacer(flex: 3),
-
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 20,
-                      spreadRadius: 5,
+          child: SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight:
+                    MediaQuery.of(context).size.height -
+                    MediaQuery.of(context).padding.top -
+                    MediaQuery.of(context).padding.bottom,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 60),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 20,
+                          spreadRadius: 5,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: Image.asset('assets/logo/logoSteakAsri.png', width: 200),
-              ),
-
-              const SizedBox(height: 40),
-
-              Center(
-                child: Text(
-                  "Steak Asri Manajemen Apps",
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.alfaSlabOne(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFFEA5700),
-                    letterSpacing: 1.2,
+                    child: Image.asset(
+                      'assets/logo/logoSteakAsri.png',
+                      width: 200,
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Center(
-                child: Text(
-                  "Manajemen Kasir Berbasis Mobile",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white70, fontSize: 16),
-                ),
-              ),
 
-              const Spacer(flex: 3),
+                  const SizedBox(height: 40),
 
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 40,
-                  vertical: 30,
-                ),
-                child: Column(
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      height: 55,
-                      child: ElevatedButton(
-
-                        onPressed: () =>
-                            Navigator.pushReplacementNamed(context, '/login'),
-                        style: ElevatedButton.styleFrom(
-                          side: const BorderSide(
-                            color: Colors.white,
-                          ),
-                          backgroundColor: const Color(0xFFEA5700),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                          elevation: 5,
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              "Mulai",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            SizedBox(width: 10),
-                          ],
-                        ),
+                  Center(
+                    child: Text(
+                      "Steak Asri Manajemen Apps",
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.alfaSlabOne(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFFEA5700),
+                        letterSpacing: 1.2,
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Center(
+                    child: Text(
+                      "Manajemen Kasir Berbasis Mobile",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white70, fontSize: 16),
+                    ),
+                  ),
 
-                    const SizedBox(height: 20),
-                  ],
-                ),
+                  const SizedBox(height: 60),
+
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 40,
+                      vertical: 30,
+                    ),
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          width: double.infinity,
+                          height: 55,
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.pushReplacementNamed(
+                              context,
+                              '/login',
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              side: const BorderSide(color: Colors.white),
+                              backgroundColor: const Color(0xFFEA5700),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              elevation: 5,
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  "Mulai",
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                SizedBox(width: 10),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

@@ -5,6 +5,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
 import 'widgets/product_form_sheet.dart';
 import '../../services/bulk_import_service.dart';
+import '../../widgets/big_search_bar.dart';
 
 class InventoryPage extends StatefulWidget {
   final String storeId;
@@ -60,7 +61,7 @@ class _InventoryPageState extends State<InventoryPage> {
           .order('name');
 
       // Fetch Products
-      // Note: We select max_stock here too
+      // Note: We select max_stock here too (disabled for now)
       final productsData = await supabase
           .from('products')
           .select('*, categories(name)')
@@ -387,19 +388,8 @@ class _InventoryPageState extends State<InventoryPage> {
     int updateCount = 0;
 
     try {
-      // We iterate _filteredProducts and update those with max_stock defined
-      for (var p in _filteredProducts) {
-        final current = (p['stock_quantity'] ?? 0) as int;
-        final max = p['max_stock'] as int?;
-
-        if (max != null && current < max) {
-          await supabase
-              .from('products')
-              .update({'stock_quantity': max})
-              .eq('id', p['id']);
-          updateCount++;
-        }
-      }
+      // Max stock logic disabled due to schema mismatch
+      // for (var p in _filteredProducts) { ... }
 
       if (mounted) {
         _fetchData();
@@ -495,13 +485,16 @@ class _InventoryPageState extends State<InventoryPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        leading: IconButton(
-          icon: Icon(
-            CupertinoIcons.back,
-            color: isDark ? Colors.white : const Color(0xFF2D3436),
-          ),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: MediaQuery.of(context).size.width > 700
+            ? null
+            : IconButton(
+                icon: Icon(
+                  CupertinoIcons.back,
+                  color: isDark ? Colors.white : const Color(0xFF2D3436),
+                ),
+                onPressed: () => Navigator.pop(context),
+              ),
+        automaticallyImplyLeading: false,
         actions: [
           if (_stockFilter == 'limited') ...[
             IconButton(
@@ -552,38 +545,18 @@ class _InventoryPageState extends State<InventoryPage> {
           // Search Bar
           Padding(
             padding: const EdgeInsets.all(20),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: TextField(
-                controller: _searchController,
-                style: GoogleFonts.inter(
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
-                decoration: InputDecoration(
-                  hintText: "Cari nama barang atau SKU...",
-                  hintStyle: GoogleFonts.inter(
-                    color: isDark ? Colors.white38 : Colors.grey[400],
-                    fontSize: 14,
-                  ),
-                  prefixIcon: Icon(
-                    CupertinoIcons.search,
-                    size: 20,
-                    color: isDark ? Colors.white38 : Colors.grey,
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 15),
-                ),
-              ),
+            child: BigSearchBar(
+              controller: _searchController,
+              hintText: "Cari nama barang atau SKU...",
+              onChanged: (val) {
+                // Listener already attached in initState, but we can keep this for immediate feedback if needed
+                // _filterProducts(); // logic handles by listener
+              },
+              onClear: () {
+                _searchController.clear();
+                // trigger filter update if listener doesn't catch clear?
+                // listener catches it.
+              },
             ),
           ),
 
@@ -699,15 +672,47 @@ class _InventoryPageState extends State<InventoryPage> {
                                     ),
                                   ],
                                 )
-                              : ListView.builder(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 10,
-                                  ),
-                                  itemCount: _filteredProducts.length,
-                                  itemBuilder: (context, index) {
-                                    final product = _filteredProducts[index];
-                                    return _buildProductCard(product, index);
+                              : LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    if (constraints.maxWidth > 600) {
+                                      // Grid View for Tablets
+                                      return GridView.builder(
+                                        padding: const EdgeInsets.all(20),
+                                        gridDelegate:
+                                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                                              maxCrossAxisExtent: 220,
+                                              childAspectRatio:
+                                                  0.65, // Taller cards for column layout
+                                              crossAxisSpacing: 16,
+                                              mainAxisSpacing: 16,
+                                            ),
+                                        itemCount: _filteredProducts.length,
+                                        itemBuilder: (context, index) {
+                                          final product =
+                                              _filteredProducts[index];
+                                          return _buildProductGridItem(
+                                            product,
+                                            index,
+                                          );
+                                        },
+                                      );
+                                    }
+                                    // List View for Mobile
+                                    return ListView.builder(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 20,
+                                        vertical: 10,
+                                      ),
+                                      itemCount: _filteredProducts.length,
+                                      itemBuilder: (context, index) {
+                                        final product =
+                                            _filteredProducts[index];
+                                        return _buildProductCard(
+                                          product,
+                                          index,
+                                        );
+                                      },
+                                    );
                                   },
                                 ),
                         ),
@@ -753,8 +758,8 @@ class _InventoryPageState extends State<InventoryPage> {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 alignment: Alignment.centerLeft,
-                child: Row(
-                  children: const [
+                child: const Row(
+                  children: [
                     Icon(Icons.add_box_rounded, color: Colors.white),
                     SizedBox(width: 8),
                     Text(
@@ -1004,6 +1009,220 @@ class _InventoryPageState extends State<InventoryPage> {
             child: const Text("Simpan"),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildProductGridItem(Map<String, dynamic> product, int index) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: Duration(milliseconds: 400 + (index * 50)),
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 20 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(
+                alpha: Theme.of(context).brightness == Brightness.dark
+                    ? 0.2
+                    : 0.03,
+              ),
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: InkWell(
+          onTap: () => _openProductForm(product: product),
+          borderRadius: BorderRadius.circular(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: Stack(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(20),
+                        ),
+                        image: product['image_url'] != null
+                            ? DecorationImage(
+                                image: NetworkImage(product['image_url']),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                      ),
+                      child: product['image_url'] == null
+                          ? Center(
+                              child: Icon(
+                                CupertinoIcons.photo,
+                                color: Colors.grey[300],
+                                size: 40,
+                              ),
+                            )
+                          : null,
+                    ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.1),
+                                  blurRadius: 4,
+                                ),
+                              ],
+                            ),
+                            child: IconButton(
+                              icon: const Icon(
+                                CupertinoIcons.pencil,
+                                size: 16,
+                                color: Colors.grey,
+                              ),
+                              onPressed: () =>
+                                  _openProductForm(product: product),
+                              constraints: const BoxConstraints(),
+                              padding: const EdgeInsets.all(8),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.1),
+                                  blurRadius: 4,
+                                ),
+                              ],
+                            ),
+                            child: IconButton(
+                              icon: const Icon(
+                                CupertinoIcons.trash,
+                                size: 16,
+                                color: Colors.redAccent,
+                              ),
+                              onPressed: () => _deleteProduct(product['id']),
+                              constraints: const BoxConstraints(),
+                              padding: const EdgeInsets.all(8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      product['name'],
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      currencyFormat.format(product['sale_price']),
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: const Color(0xFFEA5700),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.indigo.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              product['categories']?['name'] ?? 'No Cat',
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.indigo,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          "Stock: ${product['is_stock_managed'] ? product['stock_quantity'] : '∞'}",
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color:
+                                product['is_stock_managed'] &&
+                                    product['stock_quantity'] < 5
+                                ? Colors.red
+                                : Colors.grey[600],
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (product['is_stock_managed']) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 32,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _showRestockDialog(product),
+                          icon: const Icon(Icons.add_box_rounded, size: 14),
+                          label: const Text(
+                            "Restock",
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            foregroundColor: Colors.green,
+                            side: const BorderSide(color: Colors.green),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

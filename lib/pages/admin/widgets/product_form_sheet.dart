@@ -31,7 +31,7 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
   bool _isStockManaged = true; // Default to managed
 
   // Image Logic
-  File? _imageFile;
+  XFile? _imageFile;
   String? _currentImageUrl;
   final ImagePicker _picker = ImagePicker();
 
@@ -58,9 +58,9 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
           .toString();
       _stockController.text = (widget.product!['stock_quantity'] ?? 0)
           .toString();
-      _maxStockController.text = (widget.product!['max_stock'] ?? '')
-          .toString();
-      if (_maxStockController.text == 'null') _maxStockController.text = '';
+      // _maxStockController.text = (widget.product!['max_stock'] ?? '')
+      //     .toString();
+      // if (_maxStockController.text == 'null') _maxStockController.text = '';
 
       _isStockManaged = widget.product!['is_stock_managed'] ?? true;
       _currentImageUrl = widget.product!['image_url'];
@@ -228,7 +228,7 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
 
     if (pickedFile != null) {
       setState(() {
-        _imageFile = File(pickedFile.path);
+        _imageFile = pickedFile;
       });
     }
   }
@@ -237,15 +237,16 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
     if (_imageFile == null) return _currentImageUrl;
 
     try {
-      final fileExt = _imageFile!.path.split('.').last;
+      final fileExt = _imageFile!.name.split('.').last;
       final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
       final filePath = 'products/$fileName';
 
+      final bytes = await _imageFile!.readAsBytes();
       await supabase.storage
           .from('products')
-          .upload(
+          .uploadBinary(
             filePath,
-            _imageFile!,
+            bytes,
             fileOptions: const FileOptions(upsert: true),
           );
 
@@ -294,9 +295,9 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
       final stock = _isStockManaged
           ? (int.tryParse(_stockController.text.trim()) ?? 0)
           : 0;
-      final maxStock = _isStockManaged && _maxStockController.text.isNotEmpty
-          ? int.tryParse(_maxStockController.text.trim())
-          : null;
+      // final maxStock = _isStockManaged && _maxStockController.text.isNotEmpty
+      //     ? int.tryParse(_maxStockController.text.trim())
+      //     : null;
 
       final data = {
         'store_id': widget.storeId,
@@ -306,7 +307,7 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
         'buy_price': buyPrice,
         'sale_price': salePrice,
         'stock_quantity': stock,
-        'max_stock': maxStock,
+        // 'max_stock': maxStock,
         'is_stock_managed': _isStockManaged,
         'category_id': _selectedCategoryId,
         'image_url': imageUrl,
@@ -474,7 +475,19 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
                           borderRadius: BorderRadius.circular(20),
                           image: _imageFile != null
                               ? DecorationImage(
-                                  image: FileImage(_imageFile!),
+                                  // For Web compatibility, use NetworkImage with blob URL?
+                                  // Or just rely on kIsWeb check?
+                                  // Actually FileImage(File(path)) doesn't work on Web.
+                                  // But XFile.path on Web is a Blob URL.
+                                  // So NetworkImage(path) works for XFile on Web!
+                                  // But on mobile/desktop, FileImage(File(path)) is needed.
+                                  // A simple cross-platform way is `Image.memory` if we read bytes,
+                                  // but that's async.
+                                  // Let's use `NetworkImage` if path starts with `blob:`, else `FileImage`.
+                                  image: _imageFile!.path.startsWith('blob:')
+                                      ? NetworkImage(_imageFile!.path)
+                                      : FileImage(File(_imageFile!.path))
+                                            as ImageProvider,
                                   fit: BoxFit.cover,
                                 )
                               : (_currentImageUrl != null
