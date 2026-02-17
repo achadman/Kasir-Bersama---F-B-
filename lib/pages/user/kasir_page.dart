@@ -9,6 +9,7 @@ import '../../services/order_service.dart';
 import '../../services/receipt_service.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/admin_controller.dart';
+import '../../controllers/settings_controller.dart';
 import 'widgets/product_option_modal.dart';
 import 'widgets/payment_success_dialog.dart';
 import '../../widgets/big_search_bar.dart';
@@ -52,11 +53,12 @@ class _KasirPageState extends State<KasirPage> {
   final TextEditingController _cashController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
 
+  bool _isGridView = true;
   Map<String, dynamic> _discountData = {
     'total_discount': 0.0,
-    'promo_count': 0,
     'promo_names': [],
   };
+  bool _isPaymentFullscreen = false;
 
   Future<void> _recalculateDiscounts() async {
     if (_storeId == null) return;
@@ -77,6 +79,7 @@ class _KasirPageState extends State<KasirPage> {
   @override
   void initState() {
     super.initState();
+    _isGridView = SettingsController.instance.isGridView.value;
     // Use post frame callback to safely access context providers
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final db = context.read<AppDatabase>();
@@ -330,6 +333,7 @@ class _KasirPageState extends State<KasirPage> {
           _cartItems.clear();
           _cashReceived = 0;
           _cashController.clear();
+          _isPaymentFullscreen = false;
           _discountData = {
             'total_discount': 0.0,
             'promo_count': 0,
@@ -471,22 +475,18 @@ class _KasirPageState extends State<KasirPage> {
               ),
             ),
             actions: [
-              // Admin Dashboard Button (only for admin)
-              Consumer<AdminController>(
-                builder: (context, adminCtrl, _) {
-                  final isAdmin = adminCtrl.userProfile?['role'] == 'admin';
-                  if (!isAdmin) return const SizedBox.shrink();
-                  return IconButton(
-                    icon: Icon(
-                      CupertinoIcons.square_grid_2x2,
-                      color: isDark ? Colors.white : Colors.black87,
-                    ),
-                    onPressed: () {
-                      Navigator.pushReplacementNamed(context, '/admin');
-                    },
-                    tooltip: "Dashboard Admin",
-                  );
+              // Layout Toggle Button
+              IconButton(
+                icon: Icon(
+                  _isGridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+                onPressed: () {
+                  final newValue = !_isGridView;
+                  setState(() => _isGridView = newValue);
+                  SettingsController.instance.setGridView(newValue);
                 },
+                tooltip: _isGridView ? "Tampilan List" : "Tampilan Grid",
               ),
               IconButton(
                 icon: Stack(
@@ -530,111 +530,117 @@ class _KasirPageState extends State<KasirPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Persistent Side Navigation
-                        const KasirSideNavigation(currentRoute: '/kasir'),
+                        if (!_isPaymentFullscreen)
+                          const KasirSideNavigation(currentRoute: '/kasir'),
 
                         // Main Content
-                        Expanded(
-                          flex: 7,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              /* Redundant Header Removed */
+                        if (!_isPaymentFullscreen)
+                          Expanded(
+                            flex: 7,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                /* Redundant Header Removed */
 
-                              // Explore Categories
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  24,
-                                  20,
-                                  24,
-                                  12,
-                                ),
-                                child: Text(
-                                  "Explore Categories",
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: isDark
-                                        ? Colors.white
-                                        : const Color(0xFF2D3436),
+                                // Explore Categories
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    24,
+                                    20,
+                                    24,
+                                    12,
+                                  ),
+                                  child: Text(
+                                    "Explore Categories",
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDark
+                                          ? Colors.white
+                                          : const Color(0xFF2D3436),
+                                    ),
                                   ),
                                 ),
-                              ),
-                              SizedBox(
-                                height: 100,
-                                child: ListView.builder(
-                                  scrollDirection: Axis.horizontal,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 24,
+                                SizedBox(
+                                  height: 100,
+                                  child: ListView.builder(
+                                    scrollDirection: Axis.horizontal,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                    ),
+                                    itemCount: _categories.length,
+                                    itemBuilder: (context, index) {
+                                      final cat = _categories[index];
+                                      final isSelected = _selectedCategory == cat;
+                                      return CategoryIconCard(
+                                        label: cat,
+                                        isSelected: isSelected,
+                                        onTap: () {
+                                          setState(
+                                            () => _selectedCategory = isSelected
+                                                ? "Semua"
+                                                : cat,
+                                          );
+                                        },
+                                      );
+                                    },
                                   ),
-                                  itemCount: _categories.length,
-                                  itemBuilder: (context, index) {
-                                    final cat = _categories[index];
-                                    final isSelected = _selectedCategory == cat;
-                                    return CategoryIconCard(
-                                      label: cat,
-                                      isSelected: isSelected,
-                                      onTap: () {
-                                        setState(
-                                          () => _selectedCategory = isSelected
-                                              ? "Semua"
-                                              : cat,
-                                        );
-                                      },
-                                    );
-                                  },
                                 ),
-                              ),
 
-                              // Product Filter Tabs (Popular/Recent)
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  24,
-                                  24,
-                                  24,
-                                  8,
+                                // Product Filter Tabs (Popular/Recent)
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    24,
+                                    24,
+                                    24,
+                                    8,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      _buildFilterTab(
+                                        "Popular",
+                                        _selectedFilter == "Popular",
+                                      ),
+                                      const SizedBox(width: 24),
+                                      _buildFilterTab(
+                                        "Recent",
+                                        _selectedFilter == "Recent",
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                child: Row(
-                                  children: [
-                                    _buildFilterTab(
-                                      "Popular",
-                                      _selectedFilter == "Popular",
-                                    ),
-                                    const SizedBox(width: 24),
-                                    _buildFilterTab(
-                                      "Recent",
-                                      _selectedFilter == "Recent",
-                                    ),
-                                  ],
-                                ),
-                              ),
 
-                              Expanded(
-                                child: ProductGrid(
-                                  storeId: _storeId!,
-                                  searchQuery: _searchQuery,
-                                  categoryFilter: _selectedCategory == "Semua"
-                                      ? "Semua"
-                                      : _categoryMap[_selectedCategory],
-                                  filterType:
-                                      _selectedFilter, // Need to implement this in ProductGrid
-                                  onItemTap: (Product product) {
-                                    _handleProductSelection(product);
-                                    setState(() {});
-                                  },
-                                  actionBuilder: (context, Product p) =>
-                                      _buildActionIcon(p),
+                                Expanded(
+                                  child: ProductGrid(
+                                    storeId: _storeId!,
+                                    searchQuery: _searchQuery,
+                                    categoryFilter: _selectedCategory == "Semua"
+                                        ? "Semua"
+                                        : _categoryMap[_selectedCategory],
+                                    filterType:
+                                        _selectedFilter, // Need to implement this in ProductGrid
+                                    isGridView: _isGridView,
+                                    onItemTap: (Product product) {
+                                      _handleProductSelection(product);
+                                      setState(() {});
+                                    },
+                                    actionBuilder: (context, Product p) =>
+                                        _buildActionIcon(p),
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
                         // Right Side (Invoice Sidebar - Smoother)
                         Expanded(
-                          flex: 3,
+                          flex: _isPaymentFullscreen ? 1 : 3,
                           child: CartSidebar(
                             cartItems: _cartItems,
                             isProcessing: _isProcessing,
                             discountData: _discountData,
+                            onModeChanged: (isPayment) {
+                              setState(() => _isPaymentFullscreen = isPayment);
+                            },
                             onRemoveItem: (cartId) {
                               _removeFromCart(cartId);
                               setState(() {});
@@ -723,6 +729,7 @@ class _KasirPageState extends State<KasirPage> {
                               categoryFilter: _selectedCategory == "Semua"
                                   ? "Semua"
                                   : _categoryMap[_selectedCategory],
+                              isGridView: _isGridView,
                               onItemTap: (Product product) {
                                 _handleProductSelection(product);
                                 setState(() {});
@@ -906,10 +913,11 @@ class _KasirPageState extends State<KasirPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      enableDrag: false, // Disable drag for full screen experience
       builder: (ctx) => StatefulBuilder(
         builder: (context, setSheetState) {
           return SizedBox(
-            height: MediaQuery.of(context).size.height * 0.85,
+            height: MediaQuery.of(context).size.height,
             child: ClipRRect(
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(24),
