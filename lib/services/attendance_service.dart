@@ -1,40 +1,38 @@
-import 'dart:io';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:image_picker/image_picker.dart';
+import 'platform/file_manager.dart';
+import 'package:path/path.dart' as p;
+import 'app_database.dart';
+import 'package:drift/drift.dart';
+import 'package:uuid/uuid.dart';
 
 class AttendanceService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  final AppDatabase db;
+
+  AttendanceService(this.db);
 
   /// Get today's attendance log for a specific user
   Future<Map<String, dynamic>?> getTodayLog(String userId) async {
     final now = DateTime.now();
-    // Start of day in local time, converted to UTC
-    final startOfDay = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).toUtc().toIso8601String();
-    // End of day in local time, converted to UTC
-    final endOfDay = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      23,
-      59,
-      59,
-    ).toUtc().toIso8601String();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
     try {
-      final response = await _supabase
-          .from('attendance_logs')
-          .select()
-          .eq('user_id', userId)
-          .gte('clock_in', startOfDay)
-          .lte('clock_in', endOfDay)
-          .maybeSingle();
+      final query = db.select(db.attendanceLogs)
+        ..where(
+          (t) =>
+              t.userId.equals(userId) &
+              t.clockIn.isBiggerOrEqualValue(startOfDay) &
+              t.clockIn.isSmallerOrEqualValue(endOfDay),
+        )
+        ..limit(1);
 
-      return response;
+      final result = await query.getSingleOrNull();
+
+      if (result != null) {
+        return result.toJson();
+      }
+      return null;
     } catch (e) {
-      // If error or no rows found (though maybeSingle handles no rows)
       return null;
     }
   }
@@ -44,54 +42,48 @@ class AttendanceService {
     String userId,
     String storeId, {
     String? notes,
-    File? imageFile,
+    XFile? imageFile,
   }) async {
     String? photoUrl;
 
     if (imageFile != null) {
-      final fileExt = imageFile.path.split('.').last;
       final fileName =
-          '$userId/${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-
-      await _supabase.storage
-          .from('attendance')
-          .upload(
-            fileName,
-            imageFile,
-            fileOptions: const FileOptions(upsert: true),
-          );
-
-      photoUrl = _supabase.storage.from('attendance').getPublicUrl(fileName);
+          'attendance_${userId}_${DateTime.now().millisecondsSinceEpoch}${p.extension(imageFile.path)}';
+      photoUrl = await FileManager().saveFile(imageFile, fileName);
     }
 
-    await _supabase.from('attendance_logs').insert({
-      'user_id': userId,
-      'store_id': storeId,
-      'clock_in': DateTime.now().toUtc().toIso8601String(),
-      'notes': notes,
-      'photo_url': photoUrl,
-      'status': 'working',
-    });
+    final id = const Uuid().v4();
+    await db
+        .into(db.attendanceLogs)
+        .insert(
+          AttendanceLogsCompanion.insert(
+            id: id,
+            userId: Value(userId),
+            storeId: Value(storeId),
+            clockIn: Value(DateTime.now()),
+            notes: Value(notes),
+            photoUrl: Value(photoUrl),
+            status: const Value('working'),
+          ),
+        );
   }
 
-  /// Update attendance status (e.g., 'working', 'break', 'finished')
+  /// Update attendance status
   Future<void> updateStatus(String logId, String status) async {
-    await _supabase
-        .from('attendance_logs')
-        .update({'status': status})
-        .eq('id', logId);
+    await (db.update(db.attendanceLogs)..where((t) => t.id.equals(logId)))
+        .write(AttendanceLogsCompanion(status: Value(status)));
   }
 
   /// Clock Out
   Future<void> clockOut(String logId, {String? notes}) async {
-    final now = DateTime.now();
-    await _supabase
-        .from('attendance_logs')
-        .update({
-          'clock_out': now.toUtc().toIso8601String(),
-          'status': 'finished',
-          if (notes != null) 'notes': notes,
-        })
-        .eq('id', logId);
+    await (db.update(
+      db.attendanceLogs,
+    )..where((t) => t.id.equals(logId))).write(
+      AttendanceLogsCompanion(
+        clockOut: Value(DateTime.now()),
+        status: const Value('finished'),
+        notes: notes != null ? Value(notes) : const Value.absent(),
+      ),
+    );
   }
 }

@@ -1,20 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import 'package:uuid/uuid.dart';
+import '../../services/app_database.dart';
 import '../../services/employee_service.dart';
 import '../../widgets/floating_card.dart';
 
 class EmployeePage extends StatefulWidget {
   final String storeId;
-  const EmployeePage({super.key, required this.storeId});
+  final VoidCallback? onMenuPressed;
+  const EmployeePage({super.key, required this.storeId, this.onMenuPressed});
 
   @override
   State<EmployeePage> createState() => _EmployeePageState();
 }
 
 class _EmployeePageState extends State<EmployeePage> {
-  final _employeeService = EmployeeService();
+  late EmployeeService _employeeService;
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final db = context.read<AppDatabase>();
+    _employeeService = EmployeeService(db);
+  }
 
   Future<void> _addEmployee() async {
     final nameController = TextEditingController();
@@ -93,43 +104,49 @@ class _EmployeePageState extends State<EmployeePage> {
                   _buildPermissionInDialog(
                     label: "Akses Kasir (POS)",
                     value: selectedPermissions['pos_access']!,
-                    onChanged: (v) =>
-                        setDialogState(() => selectedPermissions['pos_access'] = v!),
+                    onChanged: (v) => setDialogState(
+                      () => selectedPermissions['pos_access'] = v!,
+                    ),
                     isDark: isDark,
                   ),
                   _buildPermissionInDialog(
                     label: "Kelola Produk & Stok",
                     value: selectedPermissions['manage_inventory']!,
-                    onChanged: (v) =>
-                        setDialogState(() => selectedPermissions['manage_inventory'] = v!),
+                    onChanged: (v) => setDialogState(
+                      () => selectedPermissions['manage_inventory'] = v!,
+                    ),
                     isDark: isDark,
                   ),
                   _buildPermissionInDialog(
                     label: "Kelola Kategori",
                     value: selectedPermissions['manage_categories']!,
-                    onChanged: (v) =>
-                        setDialogState(() => selectedPermissions['manage_categories'] = v!),
+                    onChanged: (v) => setDialogState(
+                      () => selectedPermissions['manage_categories'] = v!,
+                    ),
                     isDark: isDark,
                   ),
                   _buildPermissionInDialog(
                     label: "Lihat Riwayat Saja",
                     value: selectedPermissions['view_history']!,
-                    onChanged: (v) =>
-                        setDialogState(() => selectedPermissions['view_history'] = v!),
+                    onChanged: (v) => setDialogState(
+                      () => selectedPermissions['view_history'] = v!,
+                    ),
                     isDark: isDark,
                   ),
                   _buildPermissionInDialog(
                     label: "Lihat Laporan Detail",
                     value: selectedPermissions['view_reports']!,
-                    onChanged: (v) =>
-                        setDialogState(() => selectedPermissions['view_reports'] = v!),
+                    onChanged: (v) => setDialogState(
+                      () => selectedPermissions['view_reports'] = v!,
+                    ),
                     isDark: isDark,
                   ),
                   _buildPermissionInDialog(
                     label: "Pengaturan Printer",
                     value: selectedPermissions['manage_printer']!,
-                    onChanged: (v) =>
-                        setDialogState(() => selectedPermissions['manage_printer'] = v!),
+                    onChanged: (v) => setDialogState(
+                      () => selectedPermissions['manage_printer'] = v!,
+                    ),
                     isDark: isDark,
                   ),
                   const SizedBox(height: 20),
@@ -174,8 +191,9 @@ class _EmployeePageState extends State<EmployeePage> {
                       fullName: name,
                       storeId: widget.storeId,
                       permissions: selectedPermissions,
+                      id: const Uuid().v4(),
                     );
-                    if (mounted) {
+                    if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text("Karyawan berhasil didaftarkan"),
@@ -185,7 +203,7 @@ class _EmployeePageState extends State<EmployeePage> {
                     }
                   } catch (e) {
                     debugPrint("Error registering employee: $e");
-                    if (mounted) {
+                    if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
@@ -323,12 +341,35 @@ class _EmployeePageState extends State<EmployeePage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        leading: IconButton(
-          icon: Icon(
-            CupertinoIcons.back,
-            color: isDark ? Colors.white : const Color(0xFF2D3436),
-          ),
-          onPressed: () => Navigator.pop(context),
+        leading: Builder(
+          builder: (ctx) {
+            final isWide = MediaQuery.of(ctx).size.width >= 720;
+            if (isWide) return const SizedBox.shrink();
+
+            if (Navigator.canPop(context)) {
+              return IconButton(
+                icon: Icon(
+                  CupertinoIcons.back,
+                  color: isDark ? Colors.white : const Color(0xFF2D3436),
+                ),
+                onPressed: () => Navigator.pop(context),
+              );
+            }
+
+            return IconButton(
+              icon: Icon(
+                CupertinoIcons.bars,
+                color: isDark ? Colors.white : const Color(0xFF2D3436),
+              ),
+              onPressed: () {
+                if (widget.onMenuPressed != null) {
+                  widget.onMenuPressed!();
+                } else {
+                  Scaffold.of(context).openDrawer();
+                }
+              },
+            );
+          },
         ),
       ),
       body: SafeArea(
@@ -341,9 +382,9 @@ class _EmployeePageState extends State<EmployeePage> {
                     !_isLoading) {
                   return const Center(child: CupertinoActivityIndicator());
                 }
-  
+
                 final employees = snapshot.data ?? [];
-  
+
                 if (employees.isEmpty) {
                   return Center(
                     child: Column(
@@ -365,7 +406,7 @@ class _EmployeePageState extends State<EmployeePage> {
                     ),
                   );
                 }
-  
+
                 return ListView.builder(
                   padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
                   itemCount: employees.length,
@@ -378,7 +419,9 @@ class _EmployeePageState extends State<EmployeePage> {
                         leading: Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFEA5700).withValues(alpha: 0.1),
+                            color: const Color(
+                              0xFFEA5700,
+                            ).withValues(alpha: 0.1),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(

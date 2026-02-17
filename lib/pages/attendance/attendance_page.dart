@@ -1,14 +1,15 @@
 import 'dart:async';
-import 'dart:io'; // Added
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:image_picker/image_picker.dart'; // Added
-import '../../services/attendance_service.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter/cupertino.dart';
+import '../../services/app_database.dart';
+import '../../services/attendance_service.dart';
 import '../../widgets/kasir_drawer.dart';
 import '../user/widgets/kasir_side_navigation.dart';
+import 'package:provider/provider.dart';
+import '../../services/platform/file_manager.dart';
 
 class AttendancePage extends StatefulWidget {
   const AttendancePage({super.key});
@@ -18,21 +19,25 @@ class AttendancePage extends StatefulWidget {
 }
 
 class _AttendancePageState extends State<AttendancePage> {
-  final _attendanceService = AttendanceService();
-  final supabase = Supabase.instance.client;
+  late AttendanceService _attendanceService;
 
+  String? _userId;
   String? _storeId;
   Map<String, dynamic>? _todayLog;
   bool _isLoading = true;
   Timer? _timer;
   DateTime _currentTime = DateTime.now();
-  File? _imageFile; // Added for attendance photo
+  XFile? _imageFile;
 
   @override
   void initState() {
     super.initState();
     _startClock();
-    _loadData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final db = context.read<AppDatabase>();
+      _attendanceService = AttendanceService(db);
+      _loadData();
+    });
   }
 
   void _startClock() {
@@ -51,20 +56,16 @@ class _AttendancePageState extends State<AttendancePage> {
 
   Future<void> _loadData() async {
     try {
-      final user = supabase.auth.currentUser;
-      if (user == null) return;
+      final db = context.read<AppDatabase>();
+      final profiles = await (db.select(db.profiles)..limit(1)).get();
+      if (profiles.isEmpty) return;
 
-      // Get Store ID
-      final profile = await supabase
-          .from('profiles')
-          .select('store_id')
-          .eq('id', user.id)
-          .maybeSingle();
-
-      _storeId = profile?['store_id'];
+      final profile = profiles.first;
+      _userId = profile.id;
+      _storeId = profile.storeId;
 
       // Get Today's Log
-      final log = await _attendanceService.getTodayLog(user.id);
+      final log = await _attendanceService.getTodayLog(_userId!);
 
       if (mounted) {
         setState(() {
@@ -85,7 +86,7 @@ class _AttendancePageState extends State<AttendancePage> {
       imageQuality: 50,
     );
     if (pickedFile != null) {
-      setState(() => _imageFile = File(pickedFile.path));
+      setState(() => _imageFile = pickedFile);
     }
   }
 
@@ -102,7 +103,7 @@ class _AttendancePageState extends State<AttendancePage> {
     setState(() => _isLoading = true);
     try {
       await _attendanceService.clockIn(
-        supabase.auth.currentUser!.id,
+        _userId!,
         _storeId!,
         imageFile: _imageFile,
       );
@@ -155,14 +156,12 @@ class _AttendancePageState extends State<AttendancePage> {
                 // We'll treat absence as a special clock-in with notes and immediate clock-out or just a note
                 // For simplicity, let's just use notes for now.
                 await _attendanceService.clockIn(
-                  supabase.auth.currentUser!.id,
+                  _userId!,
                   _storeId ?? "unknown",
                   notes: "TIDAK HADIR: ${reasonController.text}",
                 );
                 // Immediately clock out too
-                final log = await _attendanceService.getTodayLog(
-                  supabase.auth.currentUser!.id,
-                );
+                final log = await _attendanceService.getTodayLog(_userId!);
                 if (log != null) {
                   await _attendanceService.clockOut(
                     log['id'],
@@ -479,7 +478,7 @@ class _AttendancePageState extends State<AttendancePage> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         image: DecorationImage(
-          image: FileImage(_imageFile!),
+          image: FileManager().getImageProvider(_imageFile!.path),
           fit: BoxFit.cover,
         ),
       ),

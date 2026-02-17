@@ -1,31 +1,29 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
-
+import 'package:drift/drift.dart' hide Column;
+import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../user/kasir_page.dart';
 import 'package:flutter/cupertino.dart';
-import 'laporan_page.dart';
 import 'category_page.dart';
 import 'inventory_page.dart';
 import 'profile_page.dart';
 import 'employee_page.dart';
 import 'history/history_page.dart';
 import '../other/printer_settings_page.dart';
+import 'promotion_page.dart';
+import 'data_management_page.dart';
+import 'report/profit_loss_page.dart';
 
 import 'package:provider/provider.dart';
 import '../../controllers/admin_controller.dart';
 import 'analytics_page.dart';
-import 'widgets/admin_header.dart';
-import 'widgets/admin_menu_item.dart';
 import 'widgets/admin_drawer.dart';
-import 'widgets/low_stock_dialog.dart';
-import 'report/shift_report_page.dart';
-import 'report/profit_loss_page.dart';
 import 'widgets/admin_navigation_rail.dart';
+import 'widgets/stat_card.dart';
+import 'widgets/recent_transactions_list.dart';
+import 'widgets/pinterest_card.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-// ... imports ...
 
 class AdminPage extends StatefulWidget {
   const AdminPage({super.key});
@@ -35,647 +33,793 @@ class AdminPage extends StatefulWidget {
 }
 
 class _AdminPageState extends State<AdminPage> {
-  // ... existing variables ...
-  final supabase = Supabase.instance.client;
+  int _selectedIndex = 0;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final Color _primaryColor = const Color(0xFFEA5700);
   final currencyFormat = NumberFormat.currency(
-    locale: 'id',
+    locale: 'id_ID',
     symbol: 'Rp ',
     decimalDigits: 0,
   );
-
-  final Color _primaryColor = const Color(0xFFEA5700);
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AdminController>().loadInitialData();
+      final controller = Provider.of<AdminController>(context, listen: false);
+      controller.loadInitialData();
     });
   }
-
-  void _showLowStockAlert(AdminController controller) {
-    // ... existing implementation ...
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (BuildContext context) => LowStockDialog(
-        lowStockItems: controller.lowStockItems,
-        onInventoryTap: () {
-          Navigator.pop(context);
-          if (mounted && controller.storeId != null) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => InventoryPage(storeId: controller.storeId!),
-              ),
-            );
-          }
-        },
-      ),
-    );
-  }
-
-  int _selectedIndex = 0;
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AdminController>(
-      builder: (context, controller, child) {
-        if (controller.isInitializing) {
-          return const Scaffold(
-            body: Center(child: CupertinoActivityIndicator(radius: 15)),
-          );
-        }
+    final controller = Provider.of<AdminController>(context);
+    final isWideScreen = MediaQuery.of(context).size.width >= 720;
 
-        if (controller.storeId == null) {
-          return _buildNoStoreView(controller);
-        }
+    if (controller.isInitializing) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            // Lower breakpoint to 700 for better tablet support
-            final isWideScreen = constraints.maxWidth > 700;
-
-            if (isWideScreen) {
-              return Scaffold(
-                backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-                body: Row(
-                  children: [
-                    AdminNavigationRail(
-                      selectedIndex: _selectedIndex,
-                      onDestinationSelected: (index) =>
-                          _onRailDestinationSelected(index, controller),
-                      storeLogo: controller.storeLogo,
-                      onLogout: _handleLogout,
-                    ),
-                    const VerticalDivider(thickness: 1, width: 1),
-                    const SizedBox(width: 20), // Added spacing
-                    Expanded(child: _getSelectedPage(controller)),
-                  ],
-                ),
-              );
-            }
-
-            return Scaffold(
-              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-              drawer: AdminDrawer(
-                userName: controller.userName,
-                profileUrl: controller.profileUrl,
-                storeName: controller.storeName,
-                storeLogo: controller.storeLogo,
-                primaryColor: _primaryColor,
-                onProfileTap: () async {
-                  Navigator.pop(context);
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ProfilePage(storeId: controller.storeId!),
-                    ),
-                  );
-                  controller.loadInitialData();
+    if (isWideScreen) {
+      return Scaffold(
+        primary: false,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: Builder(
+          builder: (context) => Row(
+            children: [
+              AdminNavigationRail(
+                selectedIndex: _selectedIndex,
+                onDestinationSelected: (index) {
+                  setState(() => _selectedIndex = index);
                 },
-                onInventoryTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => InventoryPage(storeId: controller.storeId!),
-                  ),
-                ),
-                onCategoryTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => CategoryPage(storeId: controller.storeId!),
-                  ),
-                ),
-                onKasirTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const KasirPage()),
-                ),
-                onEmployeeTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => EmployeePage(storeId: controller.storeId!),
-                  ),
-                ),
-                onHistoryTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => HistoryPage(storeId: controller.storeId!),
-                  ),
-                ),
-                onAnalyticsTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AnalyticsPage()),
-                ),
-                onPrinterTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const PrinterSettingsPage(),
-                  ),
-                ),
-                role: controller.role,
-                permissions: controller.permissions,
-                onLogoutTap: _handleLogout,
+                storeLogo: controller.storeLogo,
+                onLogout: _handleLogout,
+                onProfileTap: () => setState(() => _selectedIndex = 8),
               ),
-              body: _getSelectedPage(controller),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _onRailDestinationSelected(int index, AdminController controller) {
-    setState(() {
-      _selectedIndex = index;
-    });
-
-    // Handle special cases (push external pages) if needed, currently we switch in-place
-    // Note: If you want Kasir to still be full screen, you can check index == 3 and push.
-    if (index == 3) {
-      // Kasir POS usually needs full screen
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const KasirPage()),
+              const VerticalDivider(thickness: 1, width: 1),
+              Expanded(child: _getSelectedPage(controller)),
+            ],
+          ),
+        ),
       );
-      // Reset index back to previous if you don't want 'Kasir' to remain selected after pop
-      // Or keep it selected if you want to indicate where they were.
+    } else {
+      return Scaffold(
+        key: _scaffoldKey,
+        primary: true,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        appBar: null,
+        drawer: AdminDrawer(
+          userName: controller.userName ?? 'User',
+          profileUrl: controller.profileUrl,
+          storeName: controller.storeName,
+          role: controller.role ?? 'cashier',
+          permissions: controller.permissions ?? {},
+          primaryColor: _primaryColor,
+          selectedIndex: _selectedIndex,
+          onDashboardTap: () => setState(() => _selectedIndex = 0),
+          onProfileTap: () => setState(() => _selectedIndex = 8),
+          onInventoryTap: () => setState(() => _selectedIndex = 1),
+          onCategoryTap: () => setState(() => _selectedIndex = 2),
+          onKasirTap: () => setState(() => _selectedIndex = 3),
+          onEmployeeTap: () => setState(() => _selectedIndex = 5),
+          onHistoryTap: () => setState(() => _selectedIndex = 4),
+          onAnalyticsTap: () => setState(() => _selectedIndex = 6),
+          onPrinterTap: () => setState(() => _selectedIndex = 7),
+          onPromotionTap: () => setState(() => _selectedIndex = 9),
+          onExportImportTap: () => setState(() => _selectedIndex = 10),
+          onProfitLossTap: () => setState(() => _selectedIndex = 11),
+          onLogoutTap: _handleLogout,
+        ),
+        body: Builder(builder: (context) => _getSelectedPage(controller)),
+      );
     }
   }
 
   Widget _getSelectedPage(AdminController controller) {
+    final sId = controller.storeId;
+    if (sId == null && _selectedIndex != 0 && _selectedIndex != 7) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    void onMenuPressed() => _scaffoldKey.currentState?.openDrawer();
+
     switch (_selectedIndex) {
       case 0:
         return _buildDashboardContent(controller);
       case 1:
-        return InventoryPage(storeId: controller.storeId!);
+        return InventoryPage(onMenuPressed: onMenuPressed);
       case 2:
-        return CategoryPage(storeId: controller.storeId!);
-      // case 3 is Kasir (handled as push usually, but if embedded:)
+        return CategoryPage(storeId: sId!, onMenuPressed: onMenuPressed);
       case 3:
-        // If we want embedded Kasir, return it here.
-        // But POS usually wants to hide admin UI.
-        // Let's keep it as push for now in logic, or placeholder here.
-        return const Center(child: Text("Kasir opened in new window"));
+        return KasirPage(showSidebar: false, onMenuPressed: onMenuPressed);
       case 4:
-        return EmployeePage(storeId: controller.storeId!);
+        return HistoryPage(storeId: sId!, onMenuPressed: onMenuPressed);
       case 5:
-        return HistoryPage(storeId: controller.storeId!);
+        return EmployeePage(storeId: sId!, onMenuPressed: onMenuPressed);
       case 6:
-        return const AnalyticsPage();
+        return AnalyticsPage(
+          onMenuPressed: onMenuPressed,
+          onNavigateToIndex: (index) => setState(() => _selectedIndex = index),
+        );
       case 7:
         return const PrinterSettingsPage();
+      case 8:
+        return ProfilePage(storeId: sId!, onMenuPressed: onMenuPressed);
+      case 9:
+        return PromotionPage(onMenuPressed: onMenuPressed);
+      case 10:
+        return DataManagementPage(onMenuPressed: onMenuPressed);
+      case 11:
+        return ProfitLossPage(storeId: sId!, onMenuPressed: onMenuPressed);
       default:
         return _buildDashboardContent(controller);
     }
   }
 
   Widget _buildDashboardContent(AdminController controller) {
+    final isWide = MediaQuery.of(context).size.width >= 720;
+
+    Widget content = Container(
+      color: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF1C1C1E)
+          : const Color(0xFFF8F9FA),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFEA5700), Color(0xFFFF6B35)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFEA5700).withValues(alpha: 0.3),
+                  blurRadius: 15,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    if (!isWide)
+                      Builder(
+                        builder: (context) => IconButton(
+                          padding: EdgeInsets.zero,
+                          alignment: Alignment.centerLeft,
+                          icon: const Icon(
+                            Icons.menu,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                          onPressed: () => Scaffold.of(context).openDrawer(),
+                        ),
+                      ),
+                    if (!isWide) const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Dashboard',
+                          style: GoogleFonts.poppins(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        Text(
+                          'Selamat datang, ${controller.storeName ?? "Admin"}',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            color: Colors.white.withValues(alpha: 0.9),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: isWide
+                      ? TextButton.icon(
+                          onPressed: () => setState(() => _selectedIndex = 6),
+                          icon: const Icon(
+                            Icons.analytics_outlined,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                          label: Text(
+                            'Lihat Analitik',
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              color: Colors.white,
+                            ),
+                          ),
+                        )
+                      : IconButton(
+                          onPressed: () => setState(() => _selectedIndex = 6),
+                          icon: const Icon(
+                            Icons.analytics_outlined,
+                            size: 20,
+                            color: Colors.white,
+                          ),
+                        ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSectionTitle("RINGKASAN HARI INI"),
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isWideThreshold = constraints.maxWidth > 550;
+                    final cards = [
+                      StatCard(
+                        title: 'Pendapatan',
+                        value: currencyFormat.format(controller.todaySales),
+                        icon: Icons.attach_money_rounded,
+                        color: const Color(0xFFEA5700),
+                        onTap: () => setState(() => _selectedIndex = 6),
+                      ),
+                      StatCard(
+                        title: 'Transaksi',
+                        value: '${controller.transactionCount}',
+                        icon: Icons.receipt_long_rounded,
+                        color: const Color(0xFF2196F3),
+                        onTap: () => setState(() => _selectedIndex = 4),
+                      ),
+                      FutureBuilder<int>(
+                        future: _getTotalProducts(controller),
+                        builder: (context, snapshot) {
+                          return StatCard(
+                            title: 'Produk',
+                            value: '${snapshot.data ?? 0}',
+                            icon: Icons.inventory_2_rounded,
+                            color: const Color(0xFF4CAF50),
+                            onTap: () => setState(() => _selectedIndex = 1),
+                          );
+                        },
+                      ),
+                      FutureBuilder<int>(
+                        future: _getTotalEmployees(controller),
+                        builder: (context, snapshot) {
+                          return StatCard(
+                            title: 'Karyawan',
+                            value: '${snapshot.data ?? 0}',
+                            icon: Icons.people_rounded,
+                            color: const Color(0xFF9C27B0),
+                            onTap: () => setState(() => _selectedIndex = 5),
+                          );
+                        },
+                      ),
+                    ];
+
+                    if (isWideThreshold) {
+                      return GridView.count(
+                        crossAxisCount: 4,
+                        mainAxisSpacing: 16,
+                        crossAxisSpacing: 16,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        childAspectRatio: 1.3,
+                        children: cards,
+                      );
+                    } else {
+                      return GridView.count(
+                        crossAxisCount: 2,
+                        mainAxisSpacing: 16,
+                        crossAxisSpacing: 16,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        childAspectRatio: 1.1,
+                        children: cards,
+                      );
+                    }
+                  },
+                ),
+                const SizedBox(height: 32),
+                _buildSectionTitle("PERFORMA PENDAPATAN (LIFETIME)"),
+                const SizedBox(height: 16),
+                FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _getLifetimeRevenue(controller),
+                  builder: (context, snapshot) {
+                    return _buildLifetimeRevenueChart(
+                      snapshot.data ?? [],
+                      currencyFormat,
+                    );
+                  },
+                ),
+                const SizedBox(height: 32),
+                _buildSectionTitle("INDIKATOR PERTUMBUHAN"),
+                const SizedBox(height: 16),
+                FutureBuilder<Map<String, double>>(
+                  future: _getGrowthMetrics(controller),
+                  builder: (context, snapshot) {
+                    final metrics =
+                        snapshot.data ?? {'weekly': 0.0, 'monthly': 0.0};
+                    return _buildGrowthIndicators(
+                      metrics['weekly'] ?? 0.0,
+                      metrics['monthly'] ?? 0.0,
+                      Theme.of(context).brightness == Brightness.dark,
+                    );
+                  },
+                ),
+                const SizedBox(height: 32),
+                _buildSectionTitle("TRANSAKSI TERAKHIR"),
+                const SizedBox(height: 16),
+                FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _getRecentTransactions(controller),
+                  builder: (context, snapshot) {
+                    return RecentTransactionsList(
+                      transactions: snapshot.data ?? [],
+                      currencyFormat: currencyFormat,
+                      onViewAll: () => setState(() => _selectedIndex = 4),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
     return RefreshIndicator(
       onRefresh: controller.loadInitialData,
       color: _primaryColor,
       child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
+        padding: EdgeInsets.all(isWide ? 20 : 0),
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
         ),
-        child: Column(
-          children: [
-            AdminHeader(
-              userName: controller.storeName,
-              profileUrl: controller.storeLogo,
-              storeName: controller.storeName,
-              todaySales: controller.todaySales,
-              transactionCount: controller.transactionCount,
-              lowStockCount: controller.lowStockCount,
-              currencyFormat: currencyFormat,
-              primaryColor: _primaryColor,
-              onProfileTap: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ProfilePage(storeId: controller.storeId!),
-                  ),
-                );
-                controller.loadInitialData();
-              },
-              onLowStockTap: () => _showLowStockAlert(controller),
-              onSalesTap:
-                  (controller.role == 'owner' || controller.role == 'admin')
-                  ? () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            LaporanPage(storeId: controller.storeId!),
-                      ),
-                    )
-                  : () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            "Akses Dibatasi: Hanya Owner yang dapat melihat laporan detail.",
-                          ),
-                          backgroundColor: Colors.orange,
-                        ),
-                      );
-                    },
-            ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  if (controller.role == 'owner' ||
-                      controller.role == 'admin' ||
-                      (controller.permissions?['manage_inventory'] ?? true) ||
-                      (controller.permissions?['manage_categories'] ?? true))
-                    _buildAnimatedSection(
-                      delay: 0,
-                      child: AdminMenuSection(
-                        title: "Manajemen Stok",
-                        icon: CupertinoIcons.cube_box,
-                        items: [
-                          if (controller.role == 'owner' ||
-                              controller.role == 'admin' ||
-                              (controller.permissions?['manage_inventory'] ??
-                                  true))
-                            AdminMenuItem(
-                              label: "Barang",
-                              icon: CupertinoIcons.doc_text_viewfinder,
-                              color: Colors.blue,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => InventoryPage(
-                                    storeId: controller.storeId!,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          if (controller.role == 'owner' ||
-                              controller.role == 'admin' ||
-                              (controller.permissions?['manage_categories'] ??
-                                  true))
-                            AdminMenuItem(
-                              label: "Kategori",
-                              icon: CupertinoIcons.grid,
-                              color: Colors.indigo,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => CategoryPage(
-                                    storeId: controller.storeId!,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          AdminMenuItem(
-                            label: "Laporan Analitik",
-                            icon: CupertinoIcons.chart_bar_square,
-                            color: Colors.pinkAccent,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const AnalyticsPage(),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  const SizedBox(height: 20),
-                  _buildAnimatedSection(
-                    delay: 200,
-                    child: AdminMenuSection(
-                      title: "Operasional Kasir",
-                      icon: CupertinoIcons.cart,
-                      items: [
-                        if (controller.role == 'owner' ||
-                            controller.role == 'admin' ||
-                            (controller.permissions?['pos_access'] ?? true))
-                          AdminMenuItem(
-                            label: "Transaksi",
-                            icon: CupertinoIcons.cart_badge_plus,
-                            color: Colors.orange,
-                            onTap: () async {
-                              await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const KasirPage(),
-                                ),
-                              );
-                              controller.fetchDashboardStats();
-                            },
-                          ),
-                        if (controller.role == 'owner' ||
-                            controller.role == 'admin' ||
-                            (controller.permissions?['view_history'] ?? true))
-                          AdminMenuItem(
-                            label: "Riwayat",
-                            icon: CupertinoIcons.doc_text,
-                            color: Colors.purple,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    HistoryPage(storeId: controller.storeId!),
-                              ),
-                            ),
-                          ),
-                        if (controller.role == 'owner' ||
-                            controller.role == 'admin' ||
-                            (controller.permissions?['manage_printer'] ?? true))
-                          AdminMenuItem(
-                            label: "Printer",
-                            icon: CupertinoIcons.printer,
-                            color: Colors.blueGrey,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const PrinterSettingsPage(),
-                              ),
-                            ),
-                          ),
-                        if (controller.role == 'owner' ||
-                            controller.role == 'admin')
-                          AdminMenuItem(
-                            label: "Karyawan",
-                            icon: CupertinoIcons.person_2,
-                            color: Colors.cyan,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    EmployeePage(storeId: controller.storeId!),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  if (controller.role == 'owner' ||
-                      controller.role == 'admin' ||
-                      (controller.permissions?['view_reports'] ?? false))
-                    _buildAnimatedSection(
-                      delay: 400,
-                      child: AdminMenuSection(
-                        title: "Analitik & Laporan",
-                        icon: CupertinoIcons.graph_square,
-                        items: [
-                          AdminMenuItem(
-                            label: "Lap. Shift",
-                            icon: CupertinoIcons.list_bullet_indent,
-                            color: Colors.blueAccent,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ShiftReportPage(
-                                  storeId: controller.storeId!,
-                                ),
-                              ),
-                            ),
-                          ),
-                          AdminMenuItem(
-                            label: "Penjualan",
-                            icon: CupertinoIcons.graph_circle,
-                            color: Colors.green,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    LaporanPage(storeId: controller.storeId!),
-                              ),
-                            ),
-                          ),
-                          AdminMenuItem(
-                            label: "Laba Rugi",
-                            icon: CupertinoIcons.money_dollar_circle,
-                            color: Colors.teal,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ProfitLossPage(
-                                  storeId: controller.storeId!,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  const SizedBox(height: 40),
-                ],
-              ),
-            ),
-          ],
-        ),
+        child: content,
       ),
     );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: GoogleFonts.poppins(
+        fontSize: 12,
+        fontWeight: FontWeight.bold,
+        color: Colors.grey[500],
+        letterSpacing: 1.2,
+      ),
+    );
+  }
+
+  Future<int> _getTotalProducts(AdminController controller) async {
+    try {
+      final db = controller.database;
+      if (db == null) return 0;
+      final result = await db
+          .customSelect(
+            'SELECT COUNT(*) as count FROM products WHERE store_id = ? AND is_deleted = 0',
+            variables: [Variable.withString(controller.storeId!)],
+          )
+          .getSingle();
+      return result.data['count'] as int? ?? 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  Future<int> _getTotalEmployees(AdminController controller) async {
+    try {
+      final db = controller.database;
+      if (db == null) return 0;
+      final result = await db
+          .customSelect(
+            'SELECT COUNT(*) as count FROM profiles WHERE store_id = ? AND role = ?',
+            variables: [
+              Variable.withString(controller.storeId!),
+              Variable.withString('cashier'),
+            ],
+          )
+          .getSingle();
+      return result.data['count'] as int? ?? 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _getRecentTransactions(
+    AdminController controller,
+  ) async {
+    try {
+      final db = controller.database;
+      if (db == null) return [];
+      final results = await db
+          .customSelect(
+            '''
+        SELECT 
+          t.id, t.total_amount, t.created_at, t.cashier_id, p.full_name as cashier_name
+        FROM transactions t
+        LEFT JOIN profiles p ON t.cashier_id = p.id
+        WHERE t.store_id = ?
+        ORDER BY t.created_at DESC LIMIT 10
+        ''',
+            variables: [Variable.withString(controller.storeId!)],
+            readsFrom: {db.transactions, db.profiles},
+          )
+          .get();
+
+      return results.map((row) {
+        DateTime? date;
+        final createdAtValue = row.data['created_at'];
+        if (createdAtValue is int) {
+          date = DateTime.fromMillisecondsSinceEpoch(createdAtValue).toLocal();
+        } else if (createdAtValue is DateTime) {
+          date = createdAtValue.toLocal();
+        }
+
+        final txId = row.data['id'] as String? ?? '';
+        final invoiceNumber = txId.isNotEmpty
+            ? 'INV-${txId.substring(0, 8).toUpperCase()}'
+            : '-';
+
+        return {
+          'invoice_number': invoiceNumber,
+          'total': (row.data['total_amount'] as num?)?.toDouble() ?? 0.0,
+          'date': date,
+          'cashier': row.data['cashier_name'] as String? ?? 'System',
+          'status': 'completed',
+        };
+      }).toList();
+    } catch (e) {
+      return [];
+    }
   }
 
   Future<void> _handleLogout() async {
     final shouldLogout = await showCupertinoDialog<bool>(
       context: context,
       builder: (context) => CupertinoAlertDialog(
-        title: const Text("Konfirmasi Keluar"),
-        content: const Text("Apakah Anda yakin ingin keluar dari aplikasi?"),
+        title: const Text('Konfirmasi Logout'),
+        content: const Text('Apakah Anda yakin ingin keluar?'),
         actions: [
           CupertinoDialogAction(
-            child: const Text("Batal"),
+            child: const Text('Batal'),
             onPressed: () => Navigator.pop(context, false),
           ),
           CupertinoDialogAction(
             isDestructiveAction: true,
-            child: const Text("Keluar"),
             onPressed: () => Navigator.pop(context, true),
+            child: const Text('Logout'),
           ),
         ],
       ),
     );
 
-    if (shouldLogout == true) {
+    if (shouldLogout == true && mounted) {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('last_route');
-      await supabase.auth.signOut();
-      if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/login');
+      await prefs.remove('user_id');
+      await prefs.remove('store_id');
+      await prefs.remove('user_role');
+      if (mounted) Navigator.of(context).pushReplacementNamed('/login');
     }
   }
 
-  Widget _buildNoStoreView(AdminController controller) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                CupertinoIcons.house_alt_fill,
-                size: 100,
-                color: Color(0xFFEA5700),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                "Toko Belum Terdaftar",
-                style: GoogleFonts.poppins(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : const Color(0xFF2D3436),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                "Akun Anda terdeteksi belum memiliki toko. Silakan buat toko baru untuk mulai mengelola bisnis Anda.",
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  color: isDark ? Colors.white70 : Colors.grey[600],
-                ),
-              ),
-              const SizedBox(height: 40),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: () => _showCreateStoreDialog(controller),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFEA5700),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: Text(
-                    "Buat Toko Sekarang",
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextButton(
-                onPressed: () async {
-                  final shouldLogout = await showCupertinoDialog<bool>(
-                    context: context,
-                    builder: (context) => CupertinoAlertDialog(
-                      title: const Text("Konfirmasi Keluar"),
-                      content: const Text(
-                        "Apakah Anda yakin ingin keluar dari akun?",
-                      ),
-                      actions: [
-                        CupertinoDialogAction(
-                          child: const Text("Batal"),
-                          onPressed: () => Navigator.pop(context, false),
-                        ),
-                        CupertinoDialogAction(
-                          isDestructiveAction: true,
-                          child: const Text("Keluar"),
-                          onPressed: () => Navigator.pop(context, true),
-                        ),
-                      ],
-                    ),
-                  );
+  Future<List<Map<String, dynamic>>> _getLifetimeRevenue(
+    AdminController controller,
+  ) async {
+    try {
+      final db = controller.database;
+      if (db == null) return [];
+      final results = await db
+          .customSelect(
+            '''
+        SELECT 
+          strftime('%Y-%m', datetime(created_at/1000, 'unixepoch')) as month,
+          SUM(total_amount) as revenue
+        FROM transactions
+        WHERE store_id = ? GROUP BY month ORDER BY month ASC
+        ''',
+            variables: [Variable.withString(controller.storeId!)],
+          )
+          .get();
 
-                  if (shouldLogout == true) {
-                    await supabase.auth.signOut();
-                    if (mounted) {
-                      Navigator.pushReplacementNamed(context, '/login');
-                    }
-                  }
-                },
-                child: Text(
-                  "Keluar Akun",
-                  style: GoogleFonts.inter(color: Colors.grey),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+      return results.map((row) {
+        final monthStr = row.data['month'] as String?;
+        final revenue = (row.data['revenue'] as num?)?.toDouble() ?? 0.0;
+        String label = monthStr ?? '';
+        if (monthStr != null) {
+          try {
+            final parts = monthStr.split('-');
+            if (parts.length == 2) {
+              final month = int.parse(parts[1]);
+              final monthNames = [
+                'Jan',
+                'Feb',
+                'Mar',
+                'Apr',
+                'May',
+                'Jun',
+                'Jul',
+                'Aug',
+                'Sep',
+                'Oct',
+                'Nov',
+                'Dec',
+              ];
+              label = '${monthNames[month - 1]} ${parts[0].substring(2)}';
+            }
+          } catch (e) {}
+        }
+        return {'label': label, 'amount': revenue};
+      }).toList();
+    } catch (e) {
+      return [];
+    }
   }
 
-  Future<void> _showCreateStoreDialog(AdminController controller) async {
-    final nameController = TextEditingController();
+  Future<Map<String, double>> _getGrowthMetrics(
+    AdminController controller,
+  ) async {
+    try {
+      final db = controller.database;
+      if (db == null) return {'weekly': 0.0, 'monthly': 0.0};
+      final now = DateTime.now();
+      final startOfToday = DateTime(now.year, now.month, now.day);
+      final startOfThisWeek = startOfToday.subtract(
+        Duration(days: now.weekday - 1),
+      );
+      final startOfLastWeek = startOfThisWeek.subtract(const Duration(days: 7));
+      final startOfThisMonth = DateTime(now.year, now.month, 1);
+      final startOfLastMonth = DateTime(now.year, now.month - 1, 1);
 
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          "Buka Toko Baru",
-          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
-        ),
-        content: TextField(
-          controller: nameController,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: "Nama Toko",
-            hintText: "Contoh: Steak Asri Pusat",
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Batal"),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, nameController.text.trim()),
-            child: const Text("Buat Toko"),
-          ),
+      final thisWeekRes = await db
+          .customSelect(
+            'SELECT COALESCE(SUM(total_amount), 0) as total FROM transactions WHERE store_id = ? AND created_at >= ?',
+            variables: [
+              Variable.withString(controller.storeId!),
+              Variable.withInt(startOfThisWeek.millisecondsSinceEpoch),
+            ],
+          )
+          .getSingle();
+      final lastWeekRes = await db
+          .customSelect(
+            'SELECT COALESCE(SUM(total_amount), 0) as total FROM transactions WHERE store_id = ? AND created_at >= ? AND created_at < ?',
+            variables: [
+              Variable.withString(controller.storeId!),
+              Variable.withInt(startOfLastWeek.millisecondsSinceEpoch),
+              Variable.withInt(startOfThisWeek.millisecondsSinceEpoch),
+            ],
+          )
+          .getSingle();
+      final thisWeek = (thisWeekRes.data['total'] as num?)?.toDouble() ?? 0.0;
+      final lastWeek = (lastWeekRes.data['total'] as num?)?.toDouble() ?? 0.0;
+      final weeklyGrowth = lastWeek == 0
+          ? (thisWeek > 0 ? 100.0 : 0.0)
+          : ((thisWeek - lastWeek) / lastWeek * 100);
+
+      final thisMonthRes = await db
+          .customSelect(
+            'SELECT COALESCE(SUM(total_amount), 0) as total FROM transactions WHERE store_id = ? AND created_at >= ?',
+            variables: [
+              Variable.withString(controller.storeId!),
+              Variable.withInt(startOfThisMonth.millisecondsSinceEpoch),
+            ],
+          )
+          .getSingle();
+      final lastMonthRes = await db
+          .customSelect(
+            'SELECT COALESCE(SUM(total_amount), 0) as total FROM transactions WHERE store_id = ? AND created_at >= ? AND created_at < ?',
+            variables: [
+              Variable.withString(controller.storeId!),
+              Variable.withInt(startOfLastMonth.millisecondsSinceEpoch),
+              Variable.withInt(startOfThisMonth.millisecondsSinceEpoch),
+            ],
+          )
+          .getSingle();
+      final thisMonth = (thisMonthRes.data['total'] as num?)?.toDouble() ?? 0.0;
+      final lastMonth = (lastMonthRes.data['total'] as num?)?.toDouble() ?? 0.0;
+      final monthlyGrowth = lastMonth == 0
+          ? (thisMonth > 0 ? 100.0 : 0.0)
+          : ((thisMonth - lastMonth) / lastMonth * 100);
+
+      return {'weekly': weeklyGrowth, 'monthly': monthlyGrowth};
+    } catch (e) {
+      return {'weekly': 0.0, 'monthly': 0.0};
+    }
+  }
+
+  Widget _buildLifetimeRevenueChart(
+    List<Map<String, dynamic>> chartData,
+    NumberFormat currency,
+  ) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return PinterestCard(
+      padding: const EdgeInsets.fromLTRB(10, 24, 24, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (chartData.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(40.0),
+                child: Text('Belum ada data transaksi'),
+              ),
+            )
+          else
+            SizedBox(
+              height: 240,
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    getDrawingHorizontalLine: (val) => FlLine(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.05)
+                          : Colors.black.withValues(alpha: 0.05),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    show: true,
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 60,
+                        getTitlesWidget: (value, meta) => SideTitleWidget(
+                          meta: meta,
+                          space: 12,
+                          child: Text(
+                            NumberFormat.compactSimpleCurrency(
+                              locale: 'id',
+                            ).format(value),
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 30,
+                        getTitlesWidget: (value, meta) {
+                          final idx = value.toInt();
+                          if (idx >= 0 && idx < chartData.length) {
+                            return SideTitleWidget(
+                              meta: meta,
+                              space: 8,
+                              child: Text(
+                                chartData[idx]['label'],
+                                style: GoogleFonts.inter(
+                                  fontSize: 10,
+                                  color: Colors.grey[500],
+                                ),
+                              ),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: List.generate(chartData.length, (i) {
+                        return FlSpot(i.toDouble(), chartData[i]['amount']);
+                      }),
+                      isCurved: true,
+                      curveSmoothness: 0.35,
+                      color: const Color(0xFFEA5700),
+                      barWidth: 4,
+                      dotData: const FlDotData(show: false),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        gradient: LinearGradient(
+                          colors: [
+                            const Color(0xFFEA5700).withValues(alpha: 0.2),
+                            const Color(0xFFEA5700).withValues(alpha: 0.0),
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                      ),
+                    ),
+                  ],
+                  lineTouchData: LineTouchData(
+                    touchTooltipData: LineTouchTooltipData(
+                      getTooltipColor: (_) =>
+                          isDark ? const Color(0xFF2C2C2E) : Colors.white,
+                      tooltipRoundedRadius: 12,
+                      getTooltipItems: (touchedSpots) {
+                        return touchedSpots
+                            .map(
+                              (spot) => LineTooltipItem(
+                                currency.format(spot.y),
+                                GoogleFonts.poppins(
+                                  color: isDark ? Colors.white : Colors.black87,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            )
+                            .toList();
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
-
-    if (result != null && result.isNotEmpty) {
-      try {
-        final storeRes = await supabase
-            .from('stores')
-            .insert({'name': result})
-            .select()
-            .single();
-
-        await supabase
-            .from('profiles')
-            .update({'store_id': storeRes['id']})
-            .eq('id', supabase.auth.currentUser!.id);
-
-        controller.loadInitialData();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Toko berhasil dibuat!"),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Gagal: $e"), backgroundColor: Colors.red),
-          );
-        }
-      }
-    }
   }
 
-  Widget _buildAnimatedSection({required int delay, required Widget child}) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 600),
-      curve: Curves.easeOutQuint,
-      builder: (context, value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 30 * (1 - value)),
-            child: child,
+  Widget _buildGrowthIndicators(double weekly, double monthly, bool isDark) {
+    return Column(
+      children: [
+        _buildGrowthMiniCard("Trend Mingguan", weekly, isDark),
+        const SizedBox(height: 12),
+        _buildGrowthMiniCard("Trend Bulanan", monthly, isDark),
+      ],
+    );
+  }
+
+  Widget _buildGrowthMiniCard(String label, double growth, bool isDark) {
+    final isPos = growth >= 0;
+    final color = isPos ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+
+    return PinterestCard(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: Row(
+        children: [
+          Icon(
+            isPos
+                ? CupertinoIcons.arrow_up_circle_fill
+                : CupertinoIcons.arrow_down_circle_fill,
+            color: color,
+            size: 24,
           ),
-        );
-      },
-      child: child,
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              label,
+              style: GoogleFonts.inter(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          Text(
+            "${isPos ? '+' : ''}${growth.toStringAsFixed(1)}%",
+            style: GoogleFonts.poppins(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

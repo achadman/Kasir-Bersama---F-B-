@@ -1,20 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter/cupertino.dart';
+import '../../../services/app_database.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:drift/drift.dart' hide Column, Table;
+
+import '../../../services/export_service.dart';
+import '../../../services/platform/file_manager.dart';
 
 class ProfitLossPage extends StatefulWidget {
   final String storeId;
-  const ProfitLossPage({super.key, required this.storeId});
+  final VoidCallback? onMenuPressed;
+  const ProfitLossPage({super.key, required this.storeId, this.onMenuPressed});
 
   @override
   State<ProfitLossPage> createState() => _ProfitLossPageState();
 }
 
 class _ProfitLossPageState extends State<ProfitLossPage> {
-  final supabase = Supabase.instance.client;
   bool _isLoading = true;
+  final _exportService = ExportService();
 
   // Data State
   int _selectedYear = DateTime.now().year;
@@ -29,7 +36,6 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
   double _lastMonthRevenue = 0;
 
   // Chart Data: Year -> Week (1-53) -> Profit
-  // Also storing a mapping of Week -> MonthName for labels
   Map<int, Map<int, double>> _weeklyProfit = {};
   Map<int, Map<int, String>> _weekToMonthLabel = {};
 
@@ -54,12 +60,21 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
   Future<void> _fetchData() async {
     setState(() => _isLoading = true);
     try {
-      final txResponse = await supabase
-          .from('transactions')
-          .select('id, total_amount, created_at')
-          .eq('store_id', widget.storeId)
-          .eq('status', 'completed')
-          .order('created_at');
+      final db = context.read<AppDatabase>();
+
+      // We join transactions with their items and products to get buy_price (basePrice)
+      final query = db.select(db.transactions).join([
+        leftOuterJoin(
+          db.transactionItems,
+          db.transactionItems.transactionId.equalsExp(db.transactions.id),
+        ),
+        leftOuterJoin(
+          db.products,
+          db.products.id.equalsExp(db.transactionItems.productId),
+        ),
+      ])..where(db.transactions.storeId.equals(widget.storeId));
+
+      final results = await query.get();
 
       double totalRevAll = 0;
       double totalCostAll = 0;
@@ -70,42 +85,54 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
 
       final now = DateTime.now();
       final thisMonth = DateTime(now.year, now.month);
-      final lastMonth = DateTime(now.year, now.month - 1);
+      final lastMonth = now.month == 1
+          ? DateTime(now.year - 1, 12)
+          : DateTime(now.year, now.month - 1);
 
       double thisMonRev = 0;
       double thisMonCost = 0;
       double lastMonRev = 0;
       double lastMonCost = 0;
 
-      for (var tx in txResponse) {
-        final txId = tx['id'];
-        final total = (tx['total_amount'] as num).toDouble();
-        final date = DateTime.parse(tx['created_at']).toLocal();
+      // Group by transaction to avoid double counting transaction-level totals
+      // Drift join returns one row per item
+      Map<String, double> txRevenues = {};
+      Map<String, double> txCosts = {};
+      Map<String, DateTime> txDates = {};
+
+      for (var row in results) {
+        final tx = row.readTable(db.transactions);
+        final item = row.readTableOrNull(db.transactionItems);
+        final product = row.readTableOrNull(db.products);
+
+        final txId = tx.id;
+        final date = tx.createdAt?.toLocal() ?? DateTime.now();
+
+        if (!txRevenues.containsKey(txId)) {
+          txRevenues[txId] = tx.totalAmount ?? 0;
+          txDates[txId] = date;
+          txCosts[txId] = 0;
+        }
+
+        if (item != null) {
+          final qty = (item.quantity ?? 0).toDouble();
+          final buyPrice = product?.basePrice ?? 0;
+          txCosts[txId] = (txCosts[txId] ?? 0) + (qty * buyPrice);
+        }
+      }
+
+      // Process grouped transactions
+      txRevenues.forEach((txId, rev) {
+        final date = txDates[txId]!;
+        final cost = txCosts[txId] ?? 0;
+        final profit = rev - cost;
         final year = date.year;
-        // final month = date.month; // Unused
         final week = _getWeekNumber(date);
 
         years.add(year);
+        totalRevAll += rev;
+        totalCostAll += cost;
 
-        final itemsResponse = await supabase
-            .from('transaction_items')
-            .select('quantity, products(buy_price)')
-            .eq('transaction_id', txId);
-
-        double txCost = 0;
-        for (var item in itemsResponse) {
-          final qty = (item['quantity'] as num).toDouble();
-          final product = item['products'] as Map<String, dynamic>?;
-          final buyPrice = (product?['buy_price'] ?? 0) as num;
-          txCost += (qty * buyPrice);
-        }
-
-        final profit = total - txCost;
-
-        totalRevAll += total;
-        totalCostAll += txCost;
-
-        // Group by Year/Week
         if (!tempWeeklyProfit.containsKey(year)) {
           tempWeeklyProfit[year] = {};
           tempWeekToMonthLabel[year] = {};
@@ -113,24 +140,19 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
         tempWeeklyProfit[year]![week] =
             (tempWeeklyProfit[year]![week] ?? 0) + profit;
 
-        // Label logic: Map week to its Month name (short)
-        // If multiple months in a week, usually the month of the start date wins,
-        // or just use the month of this transaction.
-        // We'll overwrite, so the last tx in that week determines the label (roughly same month).
         if (!tempWeekToMonthLabel[year]!.containsKey(week)) {
           tempWeekToMonthLabel[year]![week] = DateFormat.MMM().format(date);
         }
 
-        // Specific Summaries (Monthly logic remains for cards)
         if (date.year == thisMonth.year && date.month == thisMonth.month) {
-          thisMonRev += total;
-          thisMonCost += txCost;
+          thisMonRev += rev;
+          thisMonCost += cost;
         } else if (date.year == lastMonth.year &&
             date.month == lastMonth.month) {
-          lastMonRev += total;
-          lastMonCost += txCost;
+          lastMonRev += rev;
+          lastMonCost += cost;
         }
-      }
+      });
 
       _availableYears = years.toList()..sort((a, b) => b.compareTo(a));
       if (_availableYears.isEmpty) {
@@ -160,6 +182,99 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
     }
   }
 
+  Future<void> _handleExport(String type) async {
+    final yearData = _weeklyProfit[_selectedYear] ?? {};
+    if (yearData.isEmpty) return;
+
+    setState(() => _isLoading = true);
+    try {
+      Uint8List bytes;
+      String filename;
+      String mimeType;
+
+      double totalProfit = yearData.values.fold(0, (sum, val) => sum + val);
+
+      if (type == 'pdf') {
+        bytes = await _exportService.generateProfitLossPdf(
+          "ASRI Store",
+          _selectedYear,
+          yearData,
+          totalProfit,
+        );
+        filename = "Laporan_LabaRugi_$_selectedYear.pdf";
+        mimeType = "application/pdf";
+      } else {
+        bytes = await _exportService.generateProfitLossExcel(
+          "ASRI Store",
+          _selectedYear,
+          yearData,
+          totalProfit,
+        );
+        filename = "Laporan_LabaRugi_$_selectedYear.xlsx";
+        mimeType =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      }
+
+      await FileManager().saveAndShareBytes(
+        filename,
+        bytes,
+        mimeType: mimeType,
+      );
+    } catch (e) {
+      debugPrint("Export Error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Gagal ekspor: $e")));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showExportMenu() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Text(
+                "Pilih Format Ekspor ($_selectedYear)",
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
+              title: const Text("Ekspor PDF"),
+              onTap: () {
+                Navigator.pop(context);
+                _handleExport('pdf');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.table_chart, color: Colors.green),
+              title: const Text("Ekspor Excel"),
+              onTap: () {
+                Navigator.pop(context);
+                _handleExport('excel');
+              },
+            ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -175,6 +290,40 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
         centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
+        actions: [
+          IconButton(
+            onPressed: (_weeklyProfit[_selectedYear] ?? {}).isEmpty
+                ? null
+                : _showExportMenu,
+            icon: const Icon(Icons.ios_share_rounded),
+            tooltip: "Ekspor Laporan",
+          ),
+          const SizedBox(width: 8),
+        ],
+        leading: Builder(
+          builder: (ctx) {
+            final isWide = MediaQuery.of(ctx).size.width >= 720;
+            if (isWide) return const SizedBox.shrink();
+
+            if (Navigator.canPop(context)) {
+              return IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(CupertinoIcons.back),
+              );
+            }
+
+            return IconButton(
+              onPressed: () {
+                if (widget.onMenuPressed != null) {
+                  widget.onMenuPressed!();
+                } else {
+                  Scaffold.of(context).openDrawer();
+                }
+              },
+              icon: const Icon(CupertinoIcons.bars),
+            );
+          },
+        ),
         iconTheme: IconThemeData(color: textColor),
         titleTextStyle: GoogleFonts.poppins(
           color: textColor,
@@ -194,7 +343,7 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
                   children: [
                     // Summary Cards Carousel
                     SizedBox(
-                      height: 140,
+                      height: 180,
                       child: ListView(
                         scrollDirection: Axis.horizontal,
                         children: [
@@ -277,19 +426,19 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
     bool isDark,
   ) {
     return Container(
-      width: 180,
+      width: 210,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -304,14 +453,17 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            _currencyFormat.format(profit),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.poppins(
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-              color: isDark ? Colors.white : Colors.black87,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              _currencyFormat.format(profit),
+              maxLines: 1,
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
             ),
           ),
           const SizedBox(height: 4),
@@ -326,7 +478,7 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
 
   Widget _buildTotalCard(bool isDark) {
     return Container(
-      width: 180,
+      width: 210,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -339,7 +491,7 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha: 0.2),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -358,14 +510,17 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            _currencyFormat.format(_totalProfitAllTime),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.poppins(
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-              color: Colors.white,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              _currencyFormat.format(_totalProfitAllTime),
+              maxLines: 1,
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: Colors.white,
+              ),
             ),
           ),
         ],
@@ -463,7 +618,9 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
           drawVerticalLine: false,
           getDrawingHorizontalLine: (value) {
             return FlLine(
-              color: isDark ? Colors.white10 : Colors.grey.withOpacity(0.2),
+              color: isDark
+                  ? Colors.white10
+                  : Colors.grey.withValues(alpha: 0.2),
               strokeWidth: 1,
               dashArray: [5, 5],
             );
@@ -483,39 +640,15 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 30,
+              reservedSize: 45,
               interval: 1,
               getTitlesWidget: (value, meta) {
                 final weekIndex = value.toInt();
-                // Show label if this week exists in data
                 if (dataPoints.any((e) => e.key == weekIndex)) {
-                  // Show month label roughly once per month or if strictly needed
-                  // Let's show month name if it's available in our map
                   final label = selectedYearLabels[weekIndex] ?? '';
-
-                  // To avoid clustering, maybe only show if it's the first time this label appears?
-                  // Simple heuristic: always show, let chart handle overlap or skip
-                  // Or just show W{num}
-
-                  // User asked: "shows chart by weeks ... shows analytic even though its not a year"
-                  // Maybe just showing W1, W2 etc is fine?
-                  // But "shows analytic" implies maybe dates.
-                  // Let's try combining: "W1\nJan" if it fits?
-                  // Or just "Jan" if it's the first week of Jan?
-
-                  // Let's just show Month (Jan) and maybe Day?
-                  // Week numbers are abstract.
-                  // Let's use the stored Month Label.
-                  // To avoid repetition ("Jan", "Jan", "Jan"), we can check previous.
-
-                  // Check if previous sorted data point had same month?
-                  // Too complex for `getTitlesWidget`.
-
-                  // Let's just show Week number for clarity + Month if possible?
-                  // Or just Month.
-
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
+                  return SideTitleWidget(
+                    meta: meta,
+                    space: 8,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -530,7 +663,7 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
                           label,
                           style: TextStyle(
                             fontSize: 8,
-                            color: Colors.grey.withOpacity(0.7),
+                            color: Colors.grey.withValues(alpha: 0.7),
                             fontWeight: FontWeight.bold,
                           ),
                         ),

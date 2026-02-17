@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
+import '../services/app_database.dart';
+import 'package:drift/drift.dart';
 
 enum ChartRange { today, week, month }
 
 class AnalyticsController extends ChangeNotifier {
-  final supabase = Supabase.instance.client;
+  final AppDatabase _db;
+
+  AnalyticsController(this._db);
 
   bool _isLoading = true;
   bool get isLoading => _isLoading;
@@ -75,15 +78,12 @@ class AnalyticsController extends ChangeNotifier {
   }
 
   Future<void> _fetchTotalSales() async {
-    final response = await supabase
-        .from('transactions')
-        .select('total_amount')
-        .eq('store_id', _storeId!);
+    final query = _db.selectOnly(_db.transactions)
+      ..addColumns([_db.transactions.totalAmount.sum()])
+      ..where(_db.transactions.storeId.equals(_storeId!));
 
-    _totalSales = 0;
-    for (var row in response) {
-      _totalSales += (row['total_amount'] as num).toDouble();
-    }
+    final result = await query.getSingle();
+    _totalSales = result.read(_db.transactions.totalAmount.sum()) ?? 0;
   }
 
   Future<void> _fetchPeriodicSales() async {
@@ -96,14 +96,13 @@ class AnalyticsController extends ChangeNotifier {
     final startOfThisMonth = DateTime(now.year, now.month, 1);
     final startOfLastMonth = DateTime(now.year, now.month - 1, 1);
 
-    // This is simplified. In a production app, we might do one query and filter in Dart,
-    // or use Supabase functions for aggregation.
-
-    final txs = await supabase
-        .from('transactions')
-        .select('total_amount, created_at')
-        .eq('store_id', _storeId!)
-        .gte('created_at', startOfLastMonth.toUtc().toIso8601String());
+    final txs =
+        await (_db.select(_db.transactions)..where(
+              (t) =>
+                  t.storeId.equals(_storeId!) &
+                  t.createdAt.isBiggerOrEqualValue(startOfLastMonth),
+            ))
+            .get();
 
     _todaySales = 0;
     _thisWeekSales = 0;
@@ -112,8 +111,8 @@ class AnalyticsController extends ChangeNotifier {
     _lastMonthSales = 0;
 
     for (var tx in txs) {
-      final date = DateTime.parse(tx['created_at']).toLocal();
-      final amount = (tx['total_amount'] as num).toDouble();
+      final date = tx.createdAt!;
+      final amount = tx.totalAmount ?? 0;
 
       if (!date.isBefore(startOfToday)) _todaySales += amount;
       if (!date.isBefore(startOfThisWeek)) _thisWeekSales += amount;
@@ -129,27 +128,34 @@ class AnalyticsController extends ChangeNotifier {
 
   Future<void> _fetchCounts() async {
     // 1. Employee Count
-    final employees = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('store_id', _storeId!)
-        .eq('role', 'cashier');
-    _employeeCount = employees.length;
+    final empCount =
+        await (_db.selectOnly(_db.profiles)
+              ..addColumns([_db.profiles.id.count()])
+              ..where(
+                _db.profiles.storeId.equals(_storeId!) &
+                    _db.profiles.role.equals('cashier'),
+              ))
+            .getSingle();
+    _employeeCount = empCount.read(_db.profiles.id.count()) ?? 0;
 
     // 2. Transaction Count (All Time)
-    final transactions = await supabase
-        .from('transactions')
-        .select('id')
-        .eq('store_id', _storeId!);
-    _totalTransactionCount = transactions.length;
+    final txCount =
+        await (_db.selectOnly(_db.transactions)
+              ..addColumns([_db.transactions.id.count()])
+              ..where(_db.transactions.storeId.equals(_storeId!)))
+            .getSingle();
+    _totalTransactionCount = txCount.read(_db.transactions.id.count()) ?? 0;
 
     // 3. Product Count
-    final products = await supabase
-        .from('products')
-        .select('id')
-        .eq('store_id', _storeId!)
-        .eq('is_deleted', false); // Filter deleted products
-    _totalProductCount = products.length;
+    final pCount =
+        await (_db.selectOnly(_db.products)
+              ..addColumns([_db.products.id.count()])
+              ..where(
+                _db.products.storeId.equals(_storeId!) &
+                    _db.products.isDeleted.equals(false),
+              ))
+            .getSingle();
+    _totalProductCount = pCount.read(_db.products.id.count()) ?? 0;
   }
 
   Future<void> _fetchChartData() async {
@@ -184,11 +190,13 @@ class AnalyticsController extends ChangeNotifier {
         break;
     }
 
-    final txs = await supabase
-        .from('transactions')
-        .select('total_amount, created_at')
-        .eq('store_id', _storeId!)
-        .gte('created_at', startDate.toUtc().toIso8601String());
+    final txs =
+        await (_db.select(_db.transactions)..where(
+              (t) =>
+                  t.storeId.equals(_storeId!) &
+                  t.createdAt.isBiggerOrEqualValue(startDate),
+            ))
+            .get();
 
     Map<String, double> dataMap = {};
     for (int i = 0; i < steps; i++) {
@@ -203,26 +211,27 @@ class AnalyticsController extends ChangeNotifier {
     }
 
     for (var tx in txs) {
-      final date = DateTime.parse(tx['created_at']).toLocal();
-      final key = DateFormat('yyyy-MM-dd HH').format(date);
+      final date = tx.createdAt?.toLocal() ?? DateTime.now();
 
-      String? foundKey;
+      String foundKey = '';
       if (_selectedRange == ChartRange.today) {
+        final key = DateFormat('yyyy-MM-dd HH').format(date);
         if (dataMap.containsKey(key)) foundKey = key;
       } else {
         final dateKey = DateFormat('yyyy-MM-dd').format(date);
-        foundKey = dataMap.keys.firstWhere(
-          (k) => k.startsWith(dateKey),
-          orElse: () => '',
-        );
+        // Find the first key in dataMap that starts with this date
+        for (var k in dataMap.keys) {
+          if (k.startsWith(dateKey)) {
+            foundKey = k;
+            break;
+          }
+        }
       }
 
-      if (foundKey != null && foundKey.isNotEmpty) {
-        dataMap[foundKey] =
-            dataMap[foundKey]! + (tx['total_amount'] as num).toDouble();
+      if (foundKey.isNotEmpty) {
+        dataMap[foundKey] = dataMap[foundKey]! + (tx.totalAmount ?? 0);
       }
     }
-
     _chartData = dataMap.entries.map((e) {
       DateTime d = DateFormat('yyyy-MM-dd HH').parse(e.key);
       return {'date': e.key, 'amount': e.value, 'label': format.format(d)};

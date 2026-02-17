@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 import '../../../widgets/floating_card.dart';
 import '../../../services/receipt_service.dart';
 import '../../../controllers/admin_controller.dart';
-import '../../user/widgets/receipt_preview_page.dart';
+import '../../user/widgets/payment_success_dialog.dart';
 
 class TransactionDetailPage extends StatelessWidget {
   final Map<String, dynamic> transaction;
@@ -18,12 +18,26 @@ class TransactionDetailPage extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final total = (transaction['total_amount'] as num).toDouble();
+    final total = (transaction['totalAmount'] ?? 0 as num).toDouble();
     final items = List<Map<String, dynamic>>.from(
       transaction['transaction_items'] ?? [],
     );
-    final date = DateTime.parse(transaction['created_at']).toLocal();
-    final cashierName = transaction['profiles']?['full_name'] ?? 'System';
+    final rawDate = transaction['createdAt'];
+    DateTime date;
+    if (rawDate is DateTime) {
+      date = rawDate.toLocal();
+    } else if (rawDate != null) {
+      final str = rawDate.toString();
+      final asInt = int.tryParse(str);
+      if (asInt != null) {
+        date = DateTime.fromMillisecondsSinceEpoch(asInt).toLocal();
+      } else {
+        date = DateTime.tryParse(str)?.toLocal() ?? DateTime.now();
+      }
+    } else {
+      date = DateTime.now();
+    }
+    final cashierName = transaction['profiles']?['fullName'] ?? 'System';
 
     final currencyFormat = NumberFormat.currency(
       locale: 'id',
@@ -117,7 +131,7 @@ class TransactionDetailPage extends StatelessWidget {
                   _buildInfoRow(
                     context,
                     "Metode Bayar",
-                    transaction['payment_method']?.toString().toUpperCase() ??
+                    transaction['paymentMethod']?.toString().toUpperCase() ??
                         "TUNAI",
                     CupertinoIcons.creditcard,
                   ),
@@ -151,9 +165,9 @@ class TransactionDetailPage extends StatelessWidget {
                 separatorBuilder: (context, index) => const Divider(height: 24),
                 itemBuilder: (context, index) {
                   final item = items[index];
-                  final productName = item['products']?['name'] ?? 'Produk';
+                  final productName = item['productName'] ?? 'Produk';
                   final qty = item['quantity'] ?? 1;
-                  final price = (item['price_at_time'] as num).toDouble();
+                  final price = (item['unitPrice'] ?? 0 as num).toDouble();
 
                   return Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -213,32 +227,54 @@ class TransactionDetailPage extends StatelessWidget {
                     createdAt: date,
                     items: items.map((it) {
                       return {
-                        'name': it['products']?['name'] ?? 'Produk',
+                        'name': it['productName'] ?? 'Produk',
                         'quantity': it['quantity'],
                         'total_price':
-                            (it['price_at_time'] as num).toDouble() *
+                            (it['unitPrice'] ?? 0 as num).toDouble() *
                             (it['quantity'] as num).toDouble(),
                       };
                     }).toList(),
                     totalAmount: total,
                     cashReceived:
-                        (transaction['cash_received'] as num?)?.toDouble() ??
+                        (transaction['cashReceived'] as num?)?.toDouble() ??
                         total,
-                    change:
-                        (transaction['cash_change'] as num?)?.toDouble() ?? 0,
+                    change: (transaction['change'] as num?)?.toDouble() ?? 0,
                     paymentMethod:
-                        transaction['payment_method']?.toString() ?? "TUNAI",
+                        transaction['paymentMethod']?.toString() ?? "TUNAI",
                   );
 
                   if (context.mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ReceiptPreviewPage(
-                          pdfData: pdfData,
-                          fileName:
-                              "Struk_${transaction['id'].toString().substring(0, 8)}.pdf",
-                        ),
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (ctx) => PaymentSuccessDialog(
+                        pdfData: pdfData,
+                        transactionId: transaction['id']
+                            .toString()
+                            .substring(0, 8)
+                            .toUpperCase(),
+                        totalAmount: total,
+                        cashReceived:
+                            (transaction['cashReceived'] as num?)?.toDouble() ??
+                            total,
+                        change:
+                            (transaction['change'] as num?)?.toDouble() ?? 0,
+                        storeName: adminCtrl.storeName ?? "Toko Asri",
+                        createdAt: date,
+                        items: items.map((it) {
+                          return {
+                            'name': it['productName'] ?? 'Produk',
+                            'quantity': it['quantity'],
+                            'total_price':
+                                (it['unitPrice'] ?? 0 as num).toDouble() *
+                                (it['quantity'] as num).toDouble(),
+                          };
+                        }).toList(),
+                        paymentMethod:
+                            transaction['paymentMethod']?.toString() ?? "TUNAI",
+                        onNewTransaction: () {
+                          // Just close the dialog and return to history
+                        },
                       ),
                     );
                   }

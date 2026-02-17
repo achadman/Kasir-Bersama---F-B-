@@ -1,16 +1,18 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:csv/csv.dart';
 import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:file_saver/file_saver.dart';
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
+import 'platform/file_manager.dart';
+
+import 'package:uuid/uuid.dart';
+import 'app_database.dart';
+import 'package:drift/drift.dart';
 
 class BulkImportService {
-  final SupabaseClient supabase = Supabase.instance.client;
+  final AppDatabase _db;
+
+  BulkImportService(this._db);
 
   Future<Map<String, dynamic>> importProducts(String storeId) async {
     try {
@@ -40,7 +42,7 @@ class BulkImportService {
         }
       } else {
         if (platformFile.path != null) {
-          fileBytes = await File(platformFile.path!).readAsBytes();
+          fileBytes = await FileManager().readBytes(platformFile.path!);
         }
       }
 
@@ -69,7 +71,6 @@ class BulkImportService {
       if (fields.isEmpty) return {'status': 'error', 'message': 'File kosong'};
 
       // 2. Process Headers
-      // Expected header: name,sku,category,buy_price,sale_price,stock_quantity,description
       final headers = fields[0]
           .map((e) => e.toString().toLowerCase().trim())
           .toList();
@@ -114,82 +115,117 @@ class BulkImportService {
       }
 
       // 3. Fetch Categories for Matching
-      final catData = await supabase
-          .from('categories')
-          .select('id, name')
-          .eq('store_id', storeId);
+      final catData = await (_db.select(
+        _db.categories,
+      )..where((t) => t.storeId.equals(storeId))).get();
 
       Map<String, String> categoryMap = {
-        for (var cat in catData)
-          cat['name'].toString().toLowerCase(): cat['id'].toString(),
+        for (var cat in catData) cat.name.toString().toLowerCase(): cat.id,
       };
 
-      // 4. Parse Rows
-      List<Map<String, dynamic>> productsToInsert = [];
+      // 4. Parse Rows & Bulk Insert
       int successCount = 0;
       int failCount = 0;
       List<String> errors = [];
+      const uuid = Uuid();
+      final now = DateTime.now();
 
-      for (int i = 1; i < fields.length; i++) {
-        final row = fields[i];
-        if (row.isEmpty) continue;
+      await _db.transaction(() async {
+        for (int i = 1; i < fields.length; i++) {
+          final row = fields[i];
+          if (row.isEmpty) continue;
 
-        try {
-          // Safety index check for each column
-          String name = (nameIdx != -1 && nameIdx < row.length)
-              ? row[nameIdx]?.toString() ?? ''
-              : '';
+          try {
+            String name = (nameIdx != -1 && nameIdx < row.length)
+                ? row[nameIdx]?.toString() ?? ''
+                : '';
 
-          if (name.isEmpty) {
+            if (name.isEmpty) {
+              failCount++;
+              errors.add('Baris ${i + 1}: Nama kosong');
+              continue;
+            }
+
+            String? categoryNameRaw =
+                (categoryIdx != -1 && categoryIdx < row.length)
+                ? row[categoryIdx]?.toString().trim()
+                : null;
+
+            String? categoryId;
+            if (categoryNameRaw != null && categoryNameRaw.isNotEmpty) {
+              String categoryNameLower = categoryNameRaw.toLowerCase();
+              if (categoryMap.containsKey(categoryNameLower)) {
+                categoryId = categoryMap[categoryNameLower];
+              } else {
+                // Auto-create category
+                categoryId = uuid.v4();
+                await _db
+                    .into(_db.categories)
+                    .insert(
+                      CategoriesCompanion.insert(
+                        id: categoryId,
+                        name: Value(categoryNameRaw),
+                        storeId: Value(storeId),
+                        createdAt: Value(now),
+                        lastUpdated: Value(now),
+                      ),
+                    );
+                categoryMap[categoryNameLower] = categoryId;
+              }
+            }
+
+            await _db
+                .into(_db.products)
+                .insert(
+                  ProductsCompanion.insert(
+                    id: uuid.v4(),
+                    storeId: Value(storeId),
+                    name: Value(name),
+                    sku: Value(
+                      (skuIdx != -1 && skuIdx < row.length)
+                          ? row[skuIdx]?.toString()
+                          : null,
+                    ),
+                    categoryId: Value(categoryId),
+                    basePrice: Value(
+                      _parsePrice(
+                        (buyPriceIdx != -1 && buyPriceIdx < row.length)
+                            ? row[buyPriceIdx]
+                            : 0,
+                      ).toDouble(),
+                    ),
+                    salePrice: Value(
+                      _parsePrice(
+                        (salePriceIdx != -1 && salePriceIdx < row.length)
+                            ? row[salePriceIdx]
+                            : 0,
+                      ).toDouble(),
+                    ),
+                    stockQuantity: Value(
+                      _parseInt(
+                        (stockIdx != -1 && stockIdx < row.length)
+                            ? row[stockIdx]
+                            : 0,
+                      ),
+                    ),
+                    description: Value(
+                      (descIdx != -1 && descIdx < row.length)
+                          ? row[descIdx]?.toString()
+                          : null,
+                    ),
+                    isStockManaged: const Value(true),
+                    isAvailable: const Value(true),
+                    isDeleted: const Value(false),
+                    lastUpdated: Value(now),
+                  ),
+                );
+            successCount++;
+          } catch (e) {
             failCount++;
-            errors.add('Baris ${i + 1}: Nama kosong');
-            continue;
+            errors.add('Baris ${i + 1}: $e');
           }
-
-          String? categoryName = (categoryIdx != -1 && categoryIdx < row.length)
-              ? row[categoryIdx]?.toString().toLowerCase().trim()
-              : null;
-          String? categoryId =
-              (categoryName != null && categoryMap.containsKey(categoryName))
-              ? categoryMap[categoryName]
-              : null;
-
-          productsToInsert.add({
-            'store_id': storeId,
-            'name': name,
-            'sku': (skuIdx != -1 && skuIdx < row.length)
-                ? row[skuIdx]?.toString()
-                : null,
-            'category_id': categoryId,
-            'buy_price': _parsePrice(
-              (buyPriceIdx != -1 && buyPriceIdx < row.length)
-                  ? row[buyPriceIdx]
-                  : 0,
-            ),
-            'sale_price': _parsePrice(
-              (salePriceIdx != -1 && salePriceIdx < row.length)
-                  ? row[salePriceIdx]
-                  : 0,
-            ),
-            'stock_quantity': _parseInt(
-              (stockIdx != -1 && stockIdx < row.length) ? row[stockIdx] : 0,
-            ),
-            'description': (descIdx != -1 && descIdx < row.length)
-                ? row[descIdx]?.toString()
-                : null,
-            'is_stock_managed': true,
-          });
-          successCount++;
-        } catch (e) {
-          failCount++;
-          errors.add('Baris ${i + 1}: $e');
         }
-      }
-
-      // 5. Bulk Insert
-      if (productsToInsert.isNotEmpty) {
-        await supabase.from('products').insert(productsToInsert);
-      }
+      });
 
       return {
         'status': 'success',
@@ -205,99 +241,106 @@ class BulkImportService {
 
   Future<String?> exportProductsToExcel(String storeId) async {
     try {
-      // 1. Fetch Products
-      final productsData = await supabase
-          .from('products')
-          .select('*, categories(name)')
-          .eq('store_id', storeId)
-          .eq('is_deleted', false) // Only active products
-          .order('name');
+      debugPrint('Export: Starting export for store $storeId');
+      // 1. Fetch Products with Join
+      final query =
+          _db.select(_db.products).join([
+              leftOuterJoin(
+                _db.categories,
+                _db.categories.id.equalsExp(_db.products.categoryId),
+              ),
+            ])
+            ..where(
+              _db.products.storeId.equals(storeId) &
+                  _db.products.isDeleted.equals(false),
+            )
+            ..orderBy([
+              OrderingTerm(
+                expression: _db.products.name,
+                mode: OrderingMode.asc,
+              ),
+            ]);
 
-      if (productsData.isEmpty) {
+      final rows = await query.get();
+      debugPrint('Export: Fetched ${rows.length} products');
+
+      if (rows.isEmpty) {
+        debugPrint('Export: No products found');
         return null;
       }
 
       // 2. Create Excel
       var excel = Excel.createExcel();
-      // Remove default sheet
-      if (excel.sheets.containsKey('Sheet1')) {
-        excel.delete('Sheet1');
+
+      // Get the default sheet name
+      String sheetName = excel.getDefaultSheet() ?? 'Sheet1';
+
+      // Rename default sheet to 'Products'
+      if (sheetName != 'Products') {
+        excel.rename(sheetName, 'Products');
+        sheetName = 'Products';
       }
 
-      Sheet sheet = excel['Products'];
+      Sheet sheet = excel[sheetName];
 
-      // 3. Add Headers
-      // Must match Import format: name,sku,category,buy_price,sale_price,stock_quantity,description
-      List<TextCellValue> headers = [
-        TextCellValue('name'),
-        TextCellValue('sku'),
-        TextCellValue('category'),
-        TextCellValue('buy_price'),
-        TextCellValue('sale_price'),
-        TextCellValue('stock_quantity'),
-        TextCellValue('description'),
+      // 3. Add Headers (Matching user image)
+      List<CellValue> headers = [
+        TextCellValue('Name'),
+        TextCellValue('SKU'),
+        TextCellValue('kategori'),
+        TextCellValue('harga beli'),
+        TextCellValue('harga jual'),
+        TextCellValue('stok'),
+        TextCellValue('Description'),
       ];
       sheet.appendRow(headers);
 
       // 4. Add Rows
-      for (var p in productsData) {
+      for (var row in rows) {
+        final p = row.readTable(_db.products);
+        final c = row.readTableOrNull(_db.categories);
+
+        // Use buyPrice (SQL) or basePrice (Legacy fallback)
+        final double buyPrice = (p.buyPrice ?? p.basePrice ?? 0.0);
+
         sheet.appendRow([
-          TextCellValue(p['name'] ?? ''),
-          TextCellValue(p['sku'] ?? ''),
-          TextCellValue(p['categories']?['name'] ?? ''),
-          IntCellValue((p['buy_price'] ?? 0).toInt()),
-          IntCellValue((p['sale_price'] ?? 0).toInt()),
-          IntCellValue((p['stock_quantity'] ?? 0).toInt()),
-          TextCellValue(p['description'] ?? ''),
+          TextCellValue(p.name ?? ''),
+          TextCellValue(p.sku ?? ''),
+          TextCellValue(c?.name ?? ''),
+          DoubleCellValue(buyPrice),
+          DoubleCellValue(p.salePrice ?? 0.0),
+          IntCellValue(p.stockQuantity ?? 0),
+          TextCellValue(p.description ?? ''),
         ]);
       }
 
       // 5. Save File
       final String fileName =
           'products_export_${DateTime.now().millisecondsSinceEpoch}.xlsx';
-      var fileBytes = excel.save();
+
+      debugPrint('Export: Encoding excel bytes...');
+      var fileBytes = excel.encode();
 
       if (fileBytes == null) {
-        throw "Gagal generate file excel";
+        debugPrint('Export: excel.encode() returned null, trying excel.save()');
+        fileBytes = excel.save();
       }
 
-      if (kIsWeb) {
-        // Web: Use FileSaver to download
-        await FileSaver.instance.saveFile(
-          name: fileName,
-          bytes: Uint8List.fromList(fileBytes),
-          mimeType: MimeType.microsoftExcel,
-        );
-        return "Downloaded: $fileName";
-      } else if (Platform.isAndroid || Platform.isIOS) {
-        // Mobile: Save to temp & Share
-        final dir = await getTemporaryDirectory();
-        final file = File('${dir.path}/$fileName');
-        await file.writeAsBytes(fileBytes);
-
-        // Share/Open
-        await Share.shareXFiles([XFile(file.path)], text: 'Export Produk');
-        return "Shared: ${file.path}";
-      } else {
-        // Desktop: Save Dialog
-        String? outputFile = await FilePicker.platform.saveFile(
-          dialogTitle: 'Simpan File Excel',
-          fileName: fileName,
-          allowedExtensions: ['xlsx'],
-          type: FileType.custom,
-        );
-
-        if (outputFile != null) {
-          File(outputFile)
-            ..createSync(recursive: true)
-            ..writeAsBytesSync(fileBytes);
-          return outputFile;
-        }
+      if (fileBytes == null) {
+        throw "Gagal generate file excel (Bytes null)";
       }
 
-      return null; // User cancelled
-    } catch (e) {
-      debugPrint("Export Error: $e");
+      debugPrint('Export: Saving ${fileBytes.length} bytes to $fileName');
+      var result = await FileManager().saveAndShareBytes(
+        fileName,
+        Uint8List.fromList(fileBytes),
+      );
+
+      debugPrint('Export: Save result: $result');
+      return result != null ? "Export Success: $result" : "Export Failed";
+    } catch (e, stack) {
+      debugPrint('Export Error: $e');
+      debugPrint('Stack: $stack');
       rethrow;
     }
   }

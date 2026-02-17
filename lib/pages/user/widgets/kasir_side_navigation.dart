@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class KasirSideNavigation extends StatelessWidget {
@@ -34,7 +33,10 @@ class KasirSideNavigation extends StatelessWidget {
               color: primaryColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(CupertinoIcons.circle_grid_hex, color: primaryColor),
+            child: const Icon(
+              CupertinoIcons.circle_grid_hex,
+              color: primaryColor,
+            ),
           ),
           const SizedBox(height: 40),
           Expanded(
@@ -82,10 +84,8 @@ class KasirSideNavigation extends StatelessWidget {
                   isActive: false,
                   color: Colors.redAccent,
                   onTap: () async {
-                    final supabase = Supabase.instance.client;
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.remove('last_route');
-                    await supabase.auth.signOut();
                     if (context.mounted) {
                       Navigator.pushReplacementNamed(context, '/login');
                     }

@@ -1,27 +1,29 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../../services/bulk_import_service.dart';
+import '../../services/app_database.dart';
+import 'package:provider/provider.dart';
+import 'package:drift/drift.dart' as drift;
 import 'package:intl/intl.dart';
 import 'widgets/product_form_sheet.dart';
-import '../../services/bulk_import_service.dart';
 import '../../widgets/big_search_bar.dart';
+import '../../controllers/admin_controller.dart';
+import '../../services/platform/file_manager.dart';
 
 class InventoryPage extends StatefulWidget {
-  final String storeId;
-  const InventoryPage({super.key, required this.storeId});
+  final VoidCallback? onMenuPressed;
+  const InventoryPage({super.key, this.onMenuPressed});
 
   @override
   State<InventoryPage> createState() => _InventoryPageState();
 }
 
 class _InventoryPageState extends State<InventoryPage> {
-  final supabase = Supabase.instance.client;
+  final TextEditingController _searchController = TextEditingController();
+  List<Product> _products = [];
+  List<Product> _filteredProducts = [];
   bool _isLoading = true;
-  List<Map<String, dynamic>> _products = [];
-  List<Map<String, dynamic>> _filteredProducts = [];
-  final _searchController = TextEditingController();
-  final _importService = BulkImportService();
 
   final currencyFormat = NumberFormat.currency(
     locale: 'id',
@@ -29,15 +31,18 @@ class _InventoryPageState extends State<InventoryPage> {
     decimalDigits: 0,
   );
 
-  List<Map<String, dynamic>> _categories = [];
+  List<Category> _categories = [];
   String? _selectedCategoryId; // null means "All"
 
   // Stock Filter: 'all', 'limited', 'unlimited'
   String _stockFilter = 'all';
+  late BulkImportService _importService;
 
   @override
   void initState() {
     super.initState();
+    final db = Provider.of<AppDatabase>(context, listen: false);
+    _importService = BulkImportService(db);
     _fetchData();
     _searchController.addListener(_filterProducts);
   }
@@ -53,33 +58,38 @@ class _InventoryPageState extends State<InventoryPage> {
     setState(() => _isLoading = true);
 
     try {
-      // Fetch Categories
-      final categoriesData = await supabase
-          .from('categories')
-          .select('id, name')
-          .eq('store_id', widget.storeId)
-          .order('name');
+      final db = Provider.of<AppDatabase>(context, listen: false);
+      final admin = Provider.of<AdminController>(context, listen: false);
+      final storeId = admin.storeId;
 
-      // Fetch Products
-      // Note: We select max_stock here too (disabled for now)
-      final productsData = await supabase
-          .from('products')
-          .select('*, categories(name)')
-          .eq('store_id', widget.storeId)
-          .order('name', ascending: true);
+      if (storeId == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final categoriesData =
+          await (db.select(db.categories)
+                ..where((t) => t.storeId.equals(storeId))
+                ..orderBy([(t) => drift.OrderingTerm.asc(t.name)]))
+              .get();
+      final productsData =
+          await (db.select(db.products)
+                ..where(
+                  (t) => t.storeId.equals(storeId) & t.isDeleted.equals(false),
+                )
+                ..orderBy([(t) => drift.OrderingTerm.asc(t.name)]))
+              .get();
 
       if (mounted) {
         setState(() {
-          _categories = List<Map<String, dynamic>>.from(categoriesData);
-          _products = List<Map<String, dynamic>>.from(
-            productsData,
-          ).where((p) => (p['is_deleted'] ?? false) == false).toList();
+          _categories = categoriesData;
+          _products = productsData;
           _applyFilters();
           _isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint("Error fetching data: $e");
+      debugPrint("InventoryPage: Fetch failed: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -106,16 +116,16 @@ class _InventoryPageState extends State<InventoryPage> {
     final query = _searchController.text.toLowerCase();
     setState(() {
       _filteredProducts = _products.where((product) {
-        final name = product['name'].toString().toLowerCase();
-        final sku = (product['sku'] ?? '').toString().toLowerCase();
+        final name = product.name.toString().toLowerCase();
+        final sku = (product.sku ?? '').toString().toLowerCase();
         final matchesSearch = name.contains(query) || sku.contains(query);
 
-        final categoryId = product['category_id'];
+        final categoryId = product.categoryId;
         final matchesCategory =
             _selectedCategoryId == null || categoryId == _selectedCategoryId;
 
         bool matchesStock = true;
-        final isManaged = product['is_stock_managed'] == true;
+        final isManaged = product.isStockManaged == true;
 
         if (_stockFilter == 'limited') {
           matchesStock = isManaged;
@@ -128,13 +138,16 @@ class _InventoryPageState extends State<InventoryPage> {
     });
   }
 
-  void _openProductForm({Map<String, dynamic>? product}) async {
+  void _openProductForm({Product? product}) async {
+    final admin = Provider.of<AdminController>(context, listen: false);
+    final storeId = admin.storeId;
+    if (storeId == null) return;
+
     final result = await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) =>
-          ProductFormSheet(product: product, storeId: widget.storeId),
+      builder: (ctx) => ProductFormSheet(product: product, storeId: storeId),
     );
 
     if (result == true) {
@@ -143,9 +156,13 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   void _handleExport() async {
+    final admin = Provider.of<AdminController>(context, listen: false);
+    final storeId = admin.storeId;
+    if (storeId == null) return;
+
     setState(() => _isLoading = true);
     try {
-      final path = await _importService.exportProductsToExcel(widget.storeId);
+      final path = await _importService.exportProductsToExcel(storeId);
       if (mounted) {
         setState(() => _isLoading = false);
         if (path != null) {
@@ -171,7 +188,11 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   void _handleBulkImport() async {
-    final result = await _importService.importProducts(widget.storeId);
+    final admin = Provider.of<AdminController>(context, listen: false);
+    final storeId = admin.storeId;
+    if (storeId == null) return;
+
+    final result = await _importService.importProducts(storeId);
 
     if (result['status'] == 'cancelled') return;
 
@@ -264,20 +285,12 @@ class _InventoryPageState extends State<InventoryPage> {
     );
 
     if (confirm == true) {
+      if (!mounted) return;
       try {
-        // Fetch product to get image_url before deletion (Optional, kept for future restore logic)
-        // final product = _products.firstWhere((p) => p['id'] == id);
-        // final imageUrl = product['image_url']; // Unused in soft delete
-
-        // Soft Delete: Update is_deleted = true
-        await supabase
-            .from('products')
-            .update({'is_deleted': true})
-            .eq('id', id);
-
-        // NOTE: We do NOT delete the image from storage because the product
-        // still exists in history/transactions and might be restored later.
-
+        final db = Provider.of<AppDatabase>(context, listen: false);
+        await (db.update(db.products)..where((t) => t.id.equals(id))).write(
+          const ProductsCompanion(isDeleted: drift.Value(true)),
+        );
         _fetchData();
       } catch (e) {
         debugPrint("Error deleting product: $e");
@@ -316,7 +329,7 @@ class _InventoryPageState extends State<InventoryPage> {
       setState(() => _isLoading = true);
 
       // Collect IDs of currently filtered products (which should be 'Limited')
-      final ids = _filteredProducts.map((p) => p['id']).toList();
+      final ids = _filteredProducts.map((p) => p.id).toList();
 
       if (ids.isEmpty) {
         setState(() => _isLoading = false);
@@ -324,10 +337,12 @@ class _InventoryPageState extends State<InventoryPage> {
       }
 
       try {
-        await supabase
-            .from('products')
-            .update({'stock_quantity': 0})
-            .inFilter('id', ids);
+        final db = Provider.of<AppDatabase>(context, listen: false);
+        for (var id in ids) {
+          await (db.update(db.products)..where((t) => t.id.equals(id))).write(
+            const ProductsCompanion(stockQuantity: drift.Value(0)),
+          );
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -373,6 +388,7 @@ class _InventoryPageState extends State<InventoryPage> {
     );
 
     if (choice == null) return;
+    if (!mounted) return;
 
     if (choice == 'max') {
       await _fillToMaxStock();
@@ -439,12 +455,16 @@ class _InventoryPageState extends State<InventoryPage> {
                 setState(() => _isLoading = true);
 
                 try {
+                  final db = Provider.of<AppDatabase>(context, listen: false);
                   for (var p in _filteredProducts) {
-                    final current = (p['stock_quantity'] ?? 0) as int;
-                    await supabase
-                        .from('products')
-                        .update({'stock_quantity': current + amount})
-                        .eq('id', p['id']);
+                    final current = p.stockQuantity ?? 0;
+                    await (db.update(
+                      db.products,
+                    )..where((t) => t.id.equals(p.id))).write(
+                      ProductsCompanion(
+                        stockQuantity: drift.Value(current + amount),
+                      ),
+                    );
                   }
                   if (mounted) {
                     _fetchData();
@@ -485,15 +505,36 @@ class _InventoryPageState extends State<InventoryPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        leading: MediaQuery.of(context).size.width > 700
-            ? null
-            : IconButton(
+        leading: Builder(
+          builder: (ctx) {
+            final isWide = MediaQuery.of(ctx).size.width >= 720;
+            if (isWide) return const SizedBox.shrink();
+
+            if (Navigator.canPop(context)) {
+              return IconButton(
                 icon: Icon(
                   CupertinoIcons.back,
                   color: isDark ? Colors.white : const Color(0xFF2D3436),
                 ),
                 onPressed: () => Navigator.pop(context),
+              );
+            }
+
+            return IconButton(
+              icon: Icon(
+                CupertinoIcons.bars,
+                color: isDark ? Colors.white : const Color(0xFF2D3436),
               ),
+              onPressed: () {
+                if (widget.onMenuPressed != null) {
+                  widget.onMenuPressed!();
+                } else {
+                  Scaffold.of(context).openDrawer();
+                }
+              },
+            );
+          },
+        ),
         automaticallyImplyLeading: false,
         actions: [
           if (_stockFilter == 'limited') ...[
@@ -511,23 +552,37 @@ class _InventoryPageState extends State<InventoryPage> {
               tooltip: "Restock Semua",
             ),
           ],
-          IconButton(
+          TextButton.icon(
+            onPressed: _handleExport,
             icon: const Icon(
               CupertinoIcons.cloud_download_fill,
               color: Colors.green,
-              size: 24,
+              size: 20,
             ),
-            onPressed: _handleExport,
-            tooltip: "Export Excel",
+            label: Text(
+              "Export",
+              style: GoogleFonts.inter(
+                color: Colors.green,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
-          IconButton(
+          TextButton.icon(
+            onPressed: () => _handleBulkImport(),
             icon: const Icon(
               CupertinoIcons.cloud_upload_fill,
               color: Colors.blue,
-              size: 24,
+              size: 20,
             ),
-            onPressed: () => _handleBulkImport(), // Existing import
-            tooltip: "Import CSV/Excel",
+            label: Text(
+              "Import",
+              style: GoogleFonts.inter(
+                color: Colors.blue,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
           IconButton(
             icon: const Icon(
@@ -615,13 +670,13 @@ class _InventoryPageState extends State<InventoryPage> {
                               final cat = isAll ? null : _categories[index - 1];
                               final isSelected = isAll
                                   ? _selectedCategoryId == null
-                                  : _selectedCategoryId == cat!['id'];
+                                  : _selectedCategoryId == cat!.id;
 
                               return ChoiceChip(
-                                label: Text(isAll ? "Semua" : cat!['name']),
+                                label: Text(isAll ? "Semua" : cat!.name!),
                                 selected: isSelected,
                                 onSelected: (_) =>
-                                    _selectCategory(isAll ? null : cat!['id']),
+                                    _selectCategory(isAll ? null : cat!.id),
                                 selectedColor: const Color(0xFFEA5700),
                                 backgroundColor: Theme.of(context).cardColor,
                                 labelStyle: GoogleFonts.inter(
@@ -725,7 +780,7 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  Widget _buildProductCard(Map<String, dynamic> product, int index) {
+  Widget _buildProductCard(Product product, int index) {
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
       duration: Duration(milliseconds: 400 + (index * 50)),
@@ -739,9 +794,9 @@ class _InventoryPageState extends State<InventoryPage> {
           ),
         );
       },
-      child: product['is_stock_managed']
+      child: product.isStockManaged
           ? Dismissible(
-              key: Key("restock_${product['id']}"),
+              key: Key("restock_${product.id}"),
               direction: DismissDirection.startToEnd,
               confirmDismiss: (direction) async {
                 if (direction == DismissDirection.startToEnd) {
@@ -778,7 +833,7 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  Widget _buildProductCardContent(Map<String, dynamic> product) {
+  Widget _buildProductCardContent(Product product) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -810,14 +865,16 @@ class _InventoryPageState extends State<InventoryPage> {
                 decoration: BoxDecoration(
                   color: Colors.grey[100],
                   borderRadius: BorderRadius.circular(12),
-                  image: product['image_url'] != null
+                  image: product.imageUrl != null
                       ? DecorationImage(
-                          image: NetworkImage(product['image_url']),
+                          image: FileManager().getImageProvider(
+                            product.imageUrl!,
+                          ),
                           fit: BoxFit.cover,
                         )
                       : null,
                 ),
-                child: product['image_url'] == null
+                child: product.imageUrl == null
                     ? Icon(CupertinoIcons.photo, color: Colors.grey[300])
                     : null,
               ),
@@ -828,7 +885,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      product['name'],
+                      product.name ?? 'No Name',
                       style: GoogleFonts.poppins(
                         fontWeight: FontWeight.bold,
                         fontSize: 15,
@@ -852,7 +909,16 @@ class _InventoryPageState extends State<InventoryPage> {
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            product['categories']?['name'] ?? 'No Category',
+                            _categories
+                                    .firstWhere(
+                                      (c) => c.id == product.categoryId,
+                                      orElse: () => const Category(
+                                        id: '',
+                                        name: 'No Category',
+                                      ),
+                                    )
+                                    .name ??
+                                'No Category',
                             style: GoogleFonts.inter(
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
@@ -862,17 +928,17 @@ class _InventoryPageState extends State<InventoryPage> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          "Stock: ${product['is_stock_managed'] ? product['stock_quantity'] : '∞'}",
+                          "Stock: ${product.isStockManaged ? product.stockQuantity : '∞'}",
                           style: GoogleFonts.inter(
                             fontSize: 12,
                             color:
-                                product['is_stock_managed'] &&
-                                    product['stock_quantity'] < 5
+                                product.isStockManaged &&
+                                    (product.stockQuantity ?? 0) < 5
                                 ? Colors.red
                                 : Colors.grey[600],
                             fontWeight:
-                                product['is_stock_managed'] &&
-                                    product['stock_quantity'] < 5
+                                product.isStockManaged &&
+                                    (product.stockQuantity ?? 0) < 5
                                 ? FontWeight.bold
                                 : FontWeight.normal,
                           ),
@@ -881,7 +947,7 @@ class _InventoryPageState extends State<InventoryPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      currencyFormat.format(product['sale_price']),
+                      currencyFormat.format(product.salePrice ?? 0),
                       style: GoogleFonts.poppins(
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
@@ -911,7 +977,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       size: 20,
                       color: Colors.redAccent,
                     ),
-                    onPressed: () => _deleteProduct(product['id']),
+                    onPressed: () => _deleteProduct(product.id),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),
@@ -956,14 +1022,14 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  Future<void> _showRestockDialog(Map<String, dynamic> product) async {
+  Future<void> _showRestockDialog(Product product) async {
     final controller = TextEditingController();
-    final currentStock = product['stock_quantity'] ?? 0;
+    final currentStock = product.stockQuantity ?? 0;
 
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("Restock: ${product['name']}"),
+        title: Text("Restock: ${product.name}"),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -990,12 +1056,14 @@ class _InventoryPageState extends State<InventoryPage> {
               final addAmount = int.tryParse(controller.text) ?? 0;
               if (addAmount > 0) {
                 final newStock = currentStock + addAmount;
-                await supabase
-                    .from('products')
-                    .update({'stock_quantity': newStock})
-                    .eq('id', product['id']);
+                final db = Provider.of<AppDatabase>(context, listen: false);
+                await (db.update(
+                  db.products,
+                )..where((t) => t.id.equals(product.id))).write(
+                  ProductsCompanion(stockQuantity: drift.Value(newStock)),
+                );
 
-                if (mounted) {
+                if (context.mounted) {
                   Navigator.pop(context);
                   _fetchData();
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -1013,7 +1081,7 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  Widget _buildProductGridItem(Map<String, dynamic> product, int index) {
+  Widget _buildProductGridItem(Product product, int index) {
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
       duration: Duration(milliseconds: 400 + (index * 50)),
@@ -1057,14 +1125,16 @@ class _InventoryPageState extends State<InventoryPage> {
                         borderRadius: const BorderRadius.vertical(
                           top: Radius.circular(20),
                         ),
-                        image: product['image_url'] != null
+                        image: product.imageUrl != null
                             ? DecorationImage(
-                                image: NetworkImage(product['image_url']),
+                                image: FileManager().getImageProvider(
+                                  product.imageUrl!,
+                                ),
                                 fit: BoxFit.cover,
                               )
                             : null,
                       ),
-                      child: product['image_url'] == null
+                      child: product.imageUrl == null
                           ? Center(
                               child: Icon(
                                 CupertinoIcons.photo,
@@ -1121,7 +1191,7 @@ class _InventoryPageState extends State<InventoryPage> {
                                 size: 16,
                                 color: Colors.redAccent,
                               ),
-                              onPressed: () => _deleteProduct(product['id']),
+                              onPressed: () => _deleteProduct(product.id),
                               constraints: const BoxConstraints(),
                               padding: const EdgeInsets.all(8),
                             ),
@@ -1138,7 +1208,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      product['name'],
+                      product.name ?? 'No Name',
                       style: GoogleFonts.poppins(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
@@ -1148,7 +1218,7 @@ class _InventoryPageState extends State<InventoryPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      currencyFormat.format(product['sale_price']),
+                      currencyFormat.format(product.salePrice ?? 0),
                       style: GoogleFonts.poppins(
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
@@ -1169,7 +1239,16 @@ class _InventoryPageState extends State<InventoryPage> {
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
-                              product['categories']?['name'] ?? 'No Cat',
+                              _categories
+                                      .firstWhere(
+                                        (c) => c.id == product.categoryId,
+                                        orElse: () => const Category(
+                                          id: '',
+                                          name: 'No Cat',
+                                        ),
+                                      )
+                                      .name ??
+                                  'No Cat',
                               style: GoogleFonts.inter(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
@@ -1181,12 +1260,12 @@ class _InventoryPageState extends State<InventoryPage> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          "Stock: ${product['is_stock_managed'] ? product['stock_quantity'] : '∞'}",
+                          "Stock: ${product.isStockManaged ? product.stockQuantity : '∞'}",
                           style: GoogleFonts.inter(
                             fontSize: 11,
                             color:
-                                product['is_stock_managed'] &&
-                                    product['stock_quantity'] < 5
+                                product.isStockManaged &&
+                                    (product.stockQuantity ?? 0) < 5
                                 ? Colors.red
                                 : Colors.grey[600],
                             fontWeight: FontWeight.bold,
@@ -1194,7 +1273,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         ),
                       ],
                     ),
-                    if (product['is_stock_managed']) ...[
+                    if (product.isStockManaged) ...[
                       const SizedBox(height: 8),
                       SizedBox(
                         width: double.infinity,

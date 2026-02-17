@@ -1,13 +1,48 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:provider/provider.dart';
+import '../../../services/app_database.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter_application_1/widgets/floating_card.dart';
+import '../../../widgets/floating_card.dart';
+import 'package:drift/drift.dart' hide Column;
 
-class FinanceReport extends StatelessWidget {
+class FinanceReport extends StatefulWidget {
   final String storeId;
 
   const FinanceReport({super.key, required this.storeId});
+
+  @override
+  State<FinanceReport> createState() => _FinanceReportState();
+}
+
+class _FinanceReportState extends State<FinanceReport> {
+  List<Transaction> _txs = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchTransactions();
+  }
+
+  Future<void> _fetchTransactions() async {
+    setState(() => _isLoading = true);
+    try {
+      final db = context.read<AppDatabase>();
+      final results =
+          await (db.select(db.transactions)
+                ..where((t) => t.storeId.equals(widget.storeId))
+                ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+              .get();
+      setState(() {
+        _txs = results;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint("Error fetching transactions: $e");
+      setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,70 +56,56 @@ class FinanceReport extends StatelessWidget {
       symbol: 'Rp ',
       decimalDigits: 0,
     );
-    final supabase = Supabase.instance.client;
 
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: supabase
-          .from('transactions')
-          .stream(primaryKey: ['id'])
-          .eq('store_id', storeId)
-          .order('created_at'),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Center(child: Text("Error: ${snapshot.error}"));
-        }
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-        final txs = snapshot.data!;
-        if (txs.isEmpty) {
-          return Center(
-            child: Text(
-              "Belum ada transaksi.",
-              style: GoogleFonts.inter(color: Colors.grey[500]),
-            ),
-          );
-        }
+    if (_txs.isEmpty) {
+      return Center(
+        child: Text(
+          "Belum ada transaksi.",
+          style: GoogleFonts.inter(color: Colors.grey[500]),
+        ),
+      );
+    }
 
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-          itemCount: txs.length,
-          itemBuilder: (context, index) {
-            final tx = txs[index];
-            return FloatingCard(
-              child: ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: primaryColor.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.receipt_long_rounded, color: primaryColor),
+    return RefreshIndicator(
+      onRefresh: _fetchTransactions,
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        itemCount: _txs.length,
+        itemBuilder: (context, index) {
+          final tx = _txs[index];
+          return FloatingCard(
+            child: ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: primaryColor.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
                 ),
-                title: Text(
-                  currencyFormat.format(tx['total_amount']),
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w600,
-                    color: textHeading,
-                  ),
-                ),
-                subtitle: Text(
-                  "${tx['payment_method']} • ${DateFormat('dd MMM, HH:mm').format(DateTime.parse(tx['created_at']).toLocal())}",
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: Colors.grey[500],
-                  ),
-                ),
-                trailing: Icon(
-                  Icons.chevron_right_rounded,
-                  color: Colors.grey[300],
+                child: Icon(Icons.receipt_long_rounded, color: primaryColor),
+              ),
+              title: Text(
+                currencyFormat.format(tx.totalAmount),
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  color: textHeading,
                 ),
               ),
-            );
-          },
-        );
-      },
+              subtitle: Text(
+                "${tx.paymentMethod ?? 'Unknown'} • ${tx.createdAt != null ? DateFormat('dd MMM, HH:mm').format(tx.createdAt!.toLocal()) : ''}",
+                style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[500]),
+              ),
+              trailing: Icon(
+                Icons.chevron_right_rounded,
+                color: Colors.grey[300],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }

@@ -1,10 +1,15 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../services/platform/file_manager.dart';
+
+import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../controllers/theme_controller.dart';
 import '../pages/other/printer_settings_page.dart';
+import 'package:provider/provider.dart';
+import '../controllers/admin_controller.dart';
 
 class KasirDrawer extends StatefulWidget {
   final String currentRoute;
@@ -15,43 +20,11 @@ class KasirDrawer extends StatefulWidget {
 }
 
 class _KasirDrawerState extends State<KasirDrawer> {
-  final supabase = Supabase.instance.client;
-  String? _avatarUrl;
-  String _fullName = "Kasir";
-  String? _userId;
-  String? _role;
   bool _isLoading = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadProfile();
-  }
-
-  Future<void> _loadProfile() async {
-    final user = supabase.auth.currentUser;
-    if (user == null) return;
-    _userId = user.id;
-
-    final data = await supabase
-        .from('profiles')
-        .select('full_name, role, avatar_url, store_id')
-        .eq('id', user.id)
-        .maybeSingle();
-
-    if (mounted && data != null) {
-      setState(() {
-        _fullName = data['full_name'] ?? "Kasir";
-        _avatarUrl = data['avatar_url'];
-        _role = data['role'];
-        _role = data['role'];
-      });
-    }
-  }
-
   Future<void> _updateName() async {
-    if (_userId == null) return;
-    final controller = TextEditingController(text: _fullName);
+    final adminCtrl = context.read<AdminController>();
+    final controller = TextEditingController(text: adminCtrl.userName);
 
     await showCupertinoDialog(
       context: context,
@@ -75,11 +48,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
               Navigator.pop(ctx);
               final newName = controller.text.trim();
               if (newName.isNotEmpty) {
-                await supabase
-                    .from('profiles')
-                    .update({'full_name': newName})
-                    .eq('id', _userId!);
-                setState(() => _fullName = newName);
+                await adminCtrl.updateProfile(name: newName);
               }
             },
           ),
@@ -89,48 +58,29 @@ class _KasirDrawerState extends State<KasirDrawer> {
   }
 
   Future<void> _updatePhoto() async {
-    if (_userId == null) return;
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
 
     if (pickedFile != null) {
-      if (mounted) setState(() => _isLoading = true);
+      if (!mounted) return;
+      setState(() => _isLoading = true);
       try {
-        final fileExt = pickedFile.name.split('.').last;
-        final fileName = '$_userId/avatar.$fileExt';
-        final bytes = await pickedFile.readAsBytes();
+        final adminCtrl = context.read<AdminController>();
+        final fileName =
+            'avatar_${adminCtrl.userId}_${DateTime.now().millisecondsSinceEpoch}${p.extension(pickedFile.path)}';
 
-        await supabase.storage
-            .from('profiles')
-            .uploadBinary(
-              fileName,
-              bytes,
-              fileOptions: const FileOptions(upsert: true),
-            );
+        String savedPath = await FileManager().saveFile(pickedFile, fileName);
 
-        final publicUrl = supabase.storage
-            .from('profiles')
-            .getPublicUrl(fileName);
-
-        await supabase
-            .from('profiles')
-            .update({'avatar_url': publicUrl})
-            .eq('id', _userId!);
-
-        if (mounted) {
-          setState(() {
-            _avatarUrl = publicUrl;
-          });
-        }
+        await adminCtrl.updateProfile(avatarUrl: savedPath);
       } catch (e) {
         debugPrint("Upload Error: $e");
         if (mounted) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(SnackBar(content: Text("Gagal upload foto: $e")));
+          ).showSnackBar(SnackBar(content: Text("Gagal simpan foto: $e")));
         }
       } finally {
-        if (mounted) setState(() => _isLoading = false);
+        if (context.mounted) setState(() => _isLoading = false);
       }
     }
   }
@@ -141,6 +91,9 @@ class _KasirDrawerState extends State<KasirDrawer> {
     final bgColor = isDark ? const Color(0xFF1A1C1E) : Colors.white;
     const accentColor = Color(0xFFFF4D4D); // Vibrant Red for Kasir
 
+    final adminCtrl = context.watch<AdminController>();
+    final role = adminCtrl.role;
+
     return Drawer(
       backgroundColor: bgColor,
       shape: const RoundedRectangleBorder(
@@ -149,7 +102,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
       child: SafeArea(
         child: Column(
           children: [
-            _buildModernHeader(isDark),
+            _buildModernHeader(isDark, adminCtrl),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(
@@ -207,7 +160,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                       );
                     },
                   ),
-                  if (_role == 'admin' || _role == 'owner') ...[
+                  if (role == 'admin' || role == 'owner') ...[
                     _buildSectionTitle("ADMINISTRASI"),
                     _buildModernItem(
                       icon: CupertinoIcons.shield_lefthalf_fill,
@@ -232,7 +185,10 @@ class _KasirDrawerState extends State<KasirDrawer> {
     );
   }
 
-  Widget _buildModernHeader(bool isDark) {
+  Widget _buildModernHeader(bool isDark, AdminController adminCtrl) {
+    final avatarUrl = adminCtrl.profileUrl;
+    final fullName = adminCtrl.userName ?? "Kasir";
+
     // A slightly different style for Kasir active user
     return Container(
       width: double.infinity,
@@ -267,15 +223,15 @@ class _KasirDrawerState extends State<KasirDrawer> {
                         offset: const Offset(0, 5),
                       ),
                     ],
-                    image: _avatarUrl != null
+                    image: avatarUrl != null
                         ? DecorationImage(
-                            image: NetworkImage(_avatarUrl!),
+                            image: FileManager().getImageProvider(avatarUrl),
                             fit: BoxFit.cover,
                           )
                         : null,
                     color: isDark ? Colors.grey[800] : Colors.white,
                   ),
-                  child: _avatarUrl == null
+                  child: avatarUrl == null
                       ? Icon(
                           CupertinoIcons.person_solid,
                           size: 40,
@@ -309,7 +265,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                _fullName,
+                fullName,
                 style: GoogleFonts.poppins(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -495,8 +451,9 @@ class _KasirDrawerState extends State<KasirDrawer> {
           );
 
           if (shouldLogout == true) {
-            await supabase.auth.signOut();
-            if (!context.mounted) return;
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove('last_route');
+            if (!mounted) return;
             Navigator.pushReplacementNamed(context, '/login');
           }
         },

@@ -1,9 +1,16 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../services/report_service.dart';
+import '../services/app_database.dart';
+import 'package:drift/drift.dart';
+import '../services/promotion_service.dart';
 
 class AdminController extends ChangeNotifier {
-  final supabase = Supabase.instance.client;
+  final AppDatabase _db;
+  late final PromotionService _promotionService;
+
+  AdminController(this._db) {
+    _promotionService = PromotionService(_db);
+  }
 
   String? _userId;
   String? _storeId;
@@ -20,6 +27,13 @@ class AdminController extends ChangeNotifier {
   int _transactionCount = 0;
   Map<String, dynamic>? _userProfile;
 
+  // Stream subscriptions for reactivity
+  StreamSubscription? _salesSubscription;
+  StreamSubscription? _lowStockSubscription;
+
+  List<Category> _categories = [];
+  List<Product> _products = [];
+
   // Getters
   String? get userId => _userId;
   String? get storeId => _storeId;
@@ -35,225 +49,247 @@ class AdminController extends ChangeNotifier {
   int get lowStockCount => _lowStockCount;
   List<Map<String, dynamic>> get lowStockItems => _lowStockItems;
   int get transactionCount => _transactionCount;
+  AppDatabase? get database => _db;
+  PromotionService get promotionService => _promotionService;
+  List<Category> get categories => _categories;
+  List<Product> get products => _products;
+
+  @override
+  void dispose() {
+    _salesSubscription?.cancel();
+    _lowStockSubscription?.cancel();
+    super.dispose();
+  }
 
   Future<void> loadInitialData() async {
     try {
-      final user = supabase.auth.currentUser;
-      if (user == null) return;
+      // 1. Load Store Info from Drift
+      final stores = await (_db.select(_db.stores)..limit(1)).get();
 
-      final profile = await supabase
-          .from('profiles')
-          .select('store_id, full_name, role, avatar_url, permissions')
-          .eq('id', user.id)
-          .maybeSingle();
+      if (stores.isNotEmpty) {
+        final store = stores.first;
+        _storeId = store.id;
+        _storeName = store.name;
+        _storeLogo = store.logoUrl;
+        _userName = store.adminName;
+        _profileUrl = store.adminAvatar;
+        _role = 'admin'; // Always admin in local offline mode
+        _userId = 'local_admin';
 
-      if (profile != null) {
-        _userId = user.id;
-        _storeId = profile['store_id'];
-        _userName = profile['full_name'] ?? user.email?.split('@')[0] ?? 'User';
-        _role = profile['role'];
-        _profileUrl = profile['avatar_url'];
-        _permissions = profile['permissions'];
-        _userProfile = profile;
-
-        debugPrint(
-          "AdminController: Profile loaded. userId: $_userId, storeId: $_storeId, role: $_role",
-        );
-
-        // DEBUG: List all stores to check for mismatches
-        final allStores = await supabase.from('stores').select('id, name');
-        debugPrint("AdminController: ALL STORES in DB: ${allStores.length}");
-        for (var s in allStores) {
-          debugPrint("  - Store: ${s['name']} (ID: ${s['id']})");
-        }
+        _userProfile = {
+          'id': _userId,
+          'full_name': _userName,
+          'role': _role,
+          'avatar_url': _profileUrl,
+          'store_id': _storeId,
+        };
       } else {
-        debugPrint("AdminController: Profile NOT FOUND for userId: ${user.id}");
+        // Create an initial default store if none exists
+        const initialStoreId = 'default_store';
+        await _db
+            .into(_db.stores)
+            .insert(
+              StoresCompanion.insert(
+                id: initialStoreId,
+                name: const Value('Restoran Steak Asri'),
+                adminName: const Value('Admin Asri'),
+                createdAt: Value(DateTime.now()),
+              ),
+            );
+
+        _storeId = initialStoreId;
+        _storeName = 'Restoran Steak Asri';
+        _userName = 'Admin Asri';
+        _role = 'admin';
+        _userId = 'local_admin';
+
+        _userProfile = {
+          'id': _userId,
+          'full_name': _userName,
+          'role': _role,
+          'store_id': _storeId,
+        };
       }
 
       if (_storeId != null) {
-        await fetchDashboardStats();
-
-        // Load Store Info
-        final store = await supabase
-            .from('stores')
-            .select('name, logo_url')
-            .eq('id', _storeId!)
-            .maybeSingle();
-
-        if (store != null) {
-          _storeName = store['name'];
-          _storeLogo = store['logo_url'];
-        }
-
-        // Auto-cleanup old transactions (older than 30 days)
-        await ReportService().cleanupOldTransactions(_storeId!);
+        _initStatsStreams();
+        _categories = await (_db.select(
+          _db.categories,
+        )..where((t) => t.storeId.equals(_storeId!))).get();
+        _products =
+            await (_db.select(_db.products)
+                  ..where((t) => t.storeId.equals(_storeId!))
+                  ..where((t) => t.isDeleted.equals(false)))
+                .get();
       }
 
       _isInitializing = false;
       notifyListeners();
     } catch (e) {
-      debugPrint("AdminController: Error loading profile: $e");
+      debugPrint("AdminController: Error loading local data: $e");
       _isInitializing = false;
       notifyListeners();
     }
   }
 
-  Future<void> fetchDashboardStats() async {
+  void _initStatsStreams() {
     if (_storeId == null) return;
 
-    try {
-      final now = DateTime.now();
-      final startOfToday = DateTime(now.year, now.month, now.day);
-      final utcStartOfToday = startOfToday.toUtc();
+    _salesSubscription?.cancel();
+    _lowStockSubscription?.cancel();
 
-      debugPrint("AdminController: Fetching dashboard for storeId: $_storeId");
-      debugPrint("AdminController: Local startOfToday: $startOfToday");
-      debugPrint(
-        "AdminController: UTC startOfToday: ${utcStartOfToday.toIso8601String()}",
-      );
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day);
 
-      // Fetch Today's Sales
-      final txs = await supabase
-          .from('transactions')
-          .select('total_amount')
-          .eq('store_id', _storeId!)
-          .gte('created_at', utcStartOfToday.toIso8601String());
+    // 1. Watch today's transactions
+    _salesSubscription =
+        (_db.select(_db.transactions)..where(
+              (t) =>
+                  t.storeId.equals(_storeId!) &
+                  t.createdAt.isBiggerOrEqualValue(startOfToday),
+            ))
+            .watch()
+            .listen((txs) {
+              double total = 0;
+              for (var tx in txs) {
+                total += tx.totalAmount ?? 0;
+              }
+              _todaySales = total;
+              _transactionCount = txs.length;
+              notifyListeners();
+            });
 
-      debugPrint(
-        "AdminController: Fetched ${txs.length} transactions for today.",
-      );
+    // 2. Watch low stock products
+    _lowStockSubscription =
+        (_db.select(_db.products)
+              ..where(
+                (t) =>
+                    t.storeId.equals(_storeId!) &
+                    t.stockQuantity.isSmallerThanValue(5) &
+                    t.isStockManaged.equals(true) &
+                    t.isDeleted.equals(false),
+              )
+              ..orderBy([
+                (t) => OrderingTerm(
+                  expression: t.stockQuantity,
+                  mode: OrderingMode.asc,
+                ),
+              ]))
+            .watch()
+            .listen((productsRaw) {
+              _lowStockCount = productsRaw.length;
+              _lowStockItems = productsRaw
+                  .map(
+                    (p) => {
+                      'id': p.id,
+                      'name': p.name,
+                      'stock_quantity': p.stockQuantity,
+                      'image_url': p.imageUrl,
+                    },
+                  )
+                  .toList();
+              notifyListeners();
+            });
+  }
 
-      double total = 0;
-      for (var tx in txs) {
-        total += (tx['total_amount'] as num).toDouble();
-      }
-
-      // DEBUG: Fetch total count ever for this store
-      final allTxs = await supabase
-          .from('transactions')
-          .select('id')
-          .eq('store_id', _storeId!);
-      debugPrint(
-        "AdminController: TOTAL transactions ever for this store ID ($_storeId): ${allTxs.length}",
-      );
-
-      // NEW DEBUG: Fetch 5 arbitrary transactions and log their store_ids to see what's in the DB
-      final sampleTxs = await supabase
-          .from('transactions')
-          .select('id, store_id, created_at')
-          .limit(5);
-      debugPrint("AdminController: DB SAMPLE (Size: ${sampleTxs.length}):");
-      for (var tx in sampleTxs) {
-        debugPrint(
-          "  - ID: ${tx['id']}, STORE: ${tx['store_id']}, CREATED: ${tx['created_at']}",
-        );
-      }
-
-      // Fetch Low Stock Details
-      final products = await supabase
-          .from('products')
-          .select('id, name, stock_quantity')
-          .eq('store_id', _storeId!)
-          .lt('stock_quantity', 5)
-          .eq('is_stock_managed', true)
-          .order('stock_quantity', ascending: true);
-
-      final newLowStockItems = List<Map<String, dynamic>>.from(
-        products,
-      ).where((p) => (p['is_deleted'] ?? false) == false).toList();
-
-      // Update values and notify
-      bool changed = false;
-      if (_todaySales != total) {
-        _todaySales = total;
-        changed = true;
-      }
-      if (_transactionCount != txs.length) {
-        _transactionCount = txs.length;
-        changed = true;
-      }
-      if (_lowStockCount != products.length) {
-        _lowStockCount = products.length;
-        changed = true;
-      }
-      if (_lowStockItems.length != newLowStockItems.length) {
-        _lowStockItems = newLowStockItems;
-        changed = true;
-      } else {
-        // Simple comparison for content if needed, but length check is often enough for a first pass
-        // or we could do a more thorough check if necessary.
-        _lowStockItems = newLowStockItems;
-      }
-
-      if (changed) {
-        notifyListeners();
-      }
-    } catch (e) {
-      debugPrint("AdminController: Error fetching stats: $e");
-    }
+  Future<void> fetchDashboardStats() async {
+    // Legacy method, now handled by streams but keeping for compatibility
+    _initStatsStreams();
   }
 
   Future<void> resetStore({bool deleteProducts = false}) async {
     if (_storeId == null) return;
 
     try {
-      // 1. Delete Transaction Items (Foreign Key Constraint)
-      // We need to find all transaction IDs for this store first or just delete using inner join logic if Supabase supports it cleanly.
-      // But RLS usually handles "delete if you own it", so let's try direct delete if possible or cascading.
-      // Safest way without cascade config in DB is to delete items first.
+      await _db.transaction(() async {
+        debugPrint(
+          "ResetStore: Deleting transactions for store $_storeId (DeleteProducts: $deleteProducts)",
+        );
 
-      // Actually, if we delete transactions, items should cascade IF structured that way.
-      // If not, we must delete items first. Let's assume standard behavior but be safe.
+        // 1. Delete ALL Transaction Items (Foreign Key constraint should cascade, but manual for safety)
+        // Ideally we should filter by transaction.store_id but for single store offline mode,
+        // we can just delete all valid items or join.
+        // For simplicity in this offline app, we'll delete items linked to this store's transactions.
 
-      // Get all transaction IDs for this store
-      final txs = await supabase
-          .from('transactions')
-          .select('id')
-          .eq('store_id', _storeId!);
+        // Get transactions to delete first to get their IDs
+        final txs = await (_db.select(
+          _db.transactions,
+        )..where((t) => t.storeId.equals(_storeId!))).get();
+        final txIds = txs.map((t) => t.id).toList();
 
-      if (txs.isNotEmpty) {
-        final txIds = txs.map((t) => t['id'] as String).toList();
-        await supabase
-            .from('transaction_items')
-            .delete()
-            .filter(
-              'transaction_id',
-              'in',
-              txIds,
-            ); // Fixed: Use filter for 'in'
-        await supabase
-            .from('transactions')
-            .delete()
-            .filter('id', 'in', txIds); // Fixed: Use filter for 'in'
-      }
+        if (txIds.isNotEmpty) {
+          await (_db.delete(
+            _db.transactionItems,
+          )..where((t) => t.transactionId.isIn(txIds))).go();
+        }
 
-      // 2. Delete Attendance Logs (Clean start for employees too)
-      await supabase.from('attendance_logs').delete().eq('store_id', _storeId!);
+        // Delete Transactions
+        await (_db.delete(
+          _db.transactions,
+        )..where((t) => t.storeId.equals(_storeId!))).go();
 
-      // 3. Handle Products & Categories
-      if (deleteProducts) {
-        // Hard Delete all products
-        await supabase.from('products').delete().eq('store_id', _storeId!);
+        // 2. Handle Products & Categories
+        if (deleteProducts) {
+          debugPrint("ResetStore: Deleting products and categories.");
+          await (_db.delete(
+            _db.products,
+          )..where((t) => t.storeId.equals(_storeId!))).go();
+          await (_db.delete(
+            _db.categories,
+          )..where((t) => t.storeId.equals(_storeId!))).go();
+        } else {
+          // Reset stock only
+          debugPrint("ResetStore: Resetting stock to 0.");
+          // Update all products for this store
+          await (_db.update(_db.products)
+                ..where((t) => t.storeId.equals(_storeId!)))
+              .write(const ProductsCompanion(stockQuantity: Value(0)));
+        }
+      });
 
-        // Hard Delete all categories (Since products are gone, categories are useless)
-        await supabase.from('categories').delete().eq('store_id', _storeId!);
-      } else {
-        // Reset Stock Only
-        await supabase
-            .from('products')
-            .update({
-              'stock_quantity': 0,
-              'is_deleted': false,
-            }) // Ensure they are visible
-            .eq('store_id', _storeId!)
-            .eq('is_stock_managed', true);
-      }
-
-      // Refresh Stats
-      await fetchDashboardStats();
+      // Force refresh of local data
+      await loadInitialData();
+      notifyListeners();
+      debugPrint("ResetStore: Completed successfully.");
     } catch (e) {
       debugPrint("AdminController: Error resetting store: $e");
       rethrow;
     }
+  }
+
+  Future<void> updateProfile({String? name, String? avatarUrl}) async {
+    if (_storeId == null) return;
+
+    final updates = StoresCompanion(
+      adminName: name != null ? Value(name) : const Value.absent(),
+      adminAvatar: avatarUrl != null ? Value(avatarUrl) : const Value.absent(),
+    );
+
+    if (name != null || avatarUrl != null) {
+      await (_db.update(
+        _db.stores,
+      )..where((t) => t.id.equals(_storeId!))).write(updates);
+      await loadInitialData();
+    }
+  }
+
+  Future<void> updateStoreBranding({String? name, String? logoUrl}) async {
+    if (_storeId == null) return;
+
+    final updates = StoresCompanion(
+      name: name != null ? Value(name) : const Value.absent(),
+      logoUrl: logoUrl != null ? Value(logoUrl) : const Value.absent(),
+    );
+
+    if (name != null || logoUrl != null) {
+      await (_db.update(
+        _db.stores,
+      )..where((t) => t.id.equals(_storeId!))).write(updates);
+      await loadInitialData();
+    }
+  }
+
+  Future<void> refreshProfile() async {
+    await loadInitialData();
   }
 }

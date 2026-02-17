@@ -1,8 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart'; // Added
+import 'package:intl/intl.dart';
 import '../../widgets/product_grid.dart';
 import '../../widgets/kasir_drawer.dart';
 import 'widgets/cart_sidebar.dart';
@@ -15,21 +14,19 @@ import 'widgets/payment_success_dialog.dart';
 import '../../widgets/big_search_bar.dart';
 import 'widgets/category_icon_card.dart';
 import 'widgets/kasir_side_navigation.dart';
-import '../../services/isar_service.dart';
-import '../../services/sync_service.dart';
-import '../../models/local/local_category.dart';
-import 'package:isar/isar.dart';
+import '../../services/app_database.dart';
 
 class KasirPage extends StatefulWidget {
-  const KasirPage({super.key});
+  final bool showSidebar;
+  final VoidCallback? onMenuPressed;
+  const KasirPage({super.key, this.showSidebar = true, this.onMenuPressed});
 
   @override
   State<KasirPage> createState() => _KasirPageState();
 }
 
 class _KasirPageState extends State<KasirPage> {
-  final supabase = Supabase.instance.client;
-  final _orderService = OrderService();
+  late OrderService _orderService;
   final _receiptService = ReceiptService();
   final _currencyFormat = NumberFormat.currency(
     locale: 'id',
@@ -40,13 +37,12 @@ class _KasirPageState extends State<KasirPage> {
   String? _storeId;
   String _selectedCategory = "Semua";
   String _searchQuery = "";
-  String _selectedFilter = "Popular"; // Added: Popular or Recent
-  final List<Map<String, dynamic>> _cartItems =
-      []; // [{id, product, qty, options, notes, price}]
+  String _selectedFilter = "Popular";
+  final List<Map<String, dynamic>> _cartItems = [];
   List<String> _categories = ["Semua"];
   final Map<String, String> _categoryMap = {}; // Name -> ID
 
-  final Color _primaryColor = const Color(0xFFFF4D4D); // Vibrant Red
+  final Color _primaryColor = const Color(0xFFFF4D4D);
   String? _storeName;
   String? _storeLogoUrl;
 
@@ -54,88 +50,79 @@ class _KasirPageState extends State<KasirPage> {
   double _cashReceived = 0;
   String _selectedPaymentMethod = "Tunai";
   final TextEditingController _cashController = TextEditingController();
-  final TextEditingController _searchController =
-      TextEditingController(); // Added for clearing search
+  final TextEditingController _searchController = TextEditingController();
+
+  Map<String, dynamic> _discountData = {
+    'total_discount': 0.0,
+    'promo_count': 0,
+    'promo_names': [],
+  };
+
+  Future<void> _recalculateDiscounts() async {
+    if (_storeId == null) return;
+
+    final adminCtrl = context.read<AdminController>();
+    final result = await adminCtrl.promotionService.calculateDiscounts(
+      storeId: _storeId!,
+      cartItems: _cartItems,
+    );
+
+    if (mounted) {
+      setState(() {
+        _discountData = result;
+      });
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    // Use post frame callback to safely access context providers
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AdminController>().loadInitialData();
+      final db = context.read<AppDatabase>();
+      _orderService = OrderService(db);
+      _initData();
     });
-    _loadStoreId();
+  }
+
+  Future<void> _initData() async {
+    await context.read<AdminController>().loadInitialData();
+    if (mounted) {
+      _loadStoreId();
+    }
   }
 
   Future<void> _loadCategories() async {
     if (_storeId == null) return;
 
-    final isar = IsarService().isar;
-    final localCategories = await isar.localCategorys
-        .filter()
-        .storeIdEqualTo(_storeId!)
-        .findAll();
+    final db = context.read<AppDatabase>();
+    final localCategories = await (db.select(
+      db.categories,
+    )..where((t) => t.storeId.equals(_storeId!))).get();
 
     if (mounted) {
       setState(() {
         _categoryMap.clear();
         List<String> names = ["Semua"];
         for (var c in localCategories) {
-          names.add(c.name);
-          _categoryMap[c.name] = c.supabaseId;
+          final name = c.name ?? "Unnamed";
+          names.add(name);
+          _categoryMap[name] = c.id;
         }
         _categories = names;
       });
     }
-
-    // Also watch for changes
-    isar.localCategorys.filter().storeIdEqualTo(_storeId!).watch().listen((
-      data,
-    ) {
-      if (mounted) {
-        setState(() {
-          _categoryMap.clear();
-          List<String> names = ["Semua"];
-          for (var c in data) {
-            names.add(c.name);
-            _categoryMap[c.name] = c.supabaseId;
-          }
-          _categories = names;
-        });
-      }
-    });
   }
 
   Future<void> _loadStoreId() async {
-    final user = supabase.auth.currentUser;
-    if (user != null) {
-      final profile = await supabase
-          .from('profiles')
-          .select('store_id')
-          .eq('id', user.id)
-          .maybeSingle();
-
-      if (profile?['store_id'] != null && mounted) {
-        final sId = profile!['store_id'];
-        setState(() => _storeId = sId);
-
-        // TRIGGER SYNC
-        SyncService().syncDown(sId);
-        _loadCategories(); // Now loads from Isar
-
-        // Load Store Details for Receipt
-        final storeData = await supabase
-            .from('stores')
-            .select('name, logo_url')
-            .eq('id', sId)
-            .maybeSingle();
-
-        if (storeData != null && mounted) {
-          setState(() {
-            _storeName = storeData['name'];
-            _storeLogoUrl = storeData['logo_url'];
-          });
-        }
-      }
+    final adminCtrl = context.read<AdminController>();
+    if (adminCtrl.storeId != null) {
+      setState(() {
+        _storeId = adminCtrl.storeId;
+        _storeName = adminCtrl.storeName;
+        _storeLogoUrl = adminCtrl.storeLogo;
+      });
+      _loadCategories();
     }
   }
 
@@ -151,7 +138,7 @@ class _KasirPageState extends State<KasirPage> {
   }
 
   Future<void> _handleProductSelection(
-    Map<String, dynamic> product, {
+    Product product, {
     List? options,
     String? notes,
     double? price,
@@ -163,12 +150,12 @@ class _KasirPageState extends State<KasirPage> {
     }
 
     // 1. Check if product has options
-    final response = await supabase
-        .from('product_options')
-        .select('id')
-        .eq('product_id', product['id']);
+    final db = context.read<AppDatabase>();
+    final optionsRes = await (db.select(
+      db.productOptions,
+    )..where((t) => t.productId.equals(product.id))).get();
 
-    final count = response.length;
+    final count = optionsRes.length;
 
     if (count > 0 && mounted) {
       // Show Customization Modal
@@ -189,12 +176,12 @@ class _KasirPageState extends State<KasirPage> {
       }
     } else {
       // Add directly
-      _addToCart(product, price: (product['sale_price'] as num).toDouble());
+      _addToCart(product, price: product.salePrice ?? 0);
     }
   }
 
   void _addToCart(
-    Map<String, dynamic> product, {
+    Product product, {
     List? options,
     String? notes,
     double? price,
@@ -202,7 +189,7 @@ class _KasirPageState extends State<KasirPage> {
     setState(() {
       // Check if exact same item (product + options + notes) already in cart
       final existingIndex = _cartItems.indexWhere((item) {
-        bool sameProduct = item['product']['id'] == product['id'];
+        bool sameProduct = (item['product'] as Product).id == product.id;
         bool sameOptions = _compareOptions(item['selected_options'], options);
         bool sameNotes = (item['notes'] ?? '') == (notes ?? '');
         return sameProduct && sameOptions && sameNotes;
@@ -217,9 +204,10 @@ class _KasirPageState extends State<KasirPage> {
           'quantity': 1,
           'selected_options': options ?? [],
           'notes': notes ?? '',
-          'price': price ?? (product['sale_price'] as num).toDouble(),
+          'price': price ?? product.salePrice ?? 0,
         });
       }
+      _recalculateDiscounts();
     });
   }
 
@@ -250,6 +238,7 @@ class _KasirPageState extends State<KasirPage> {
           _cartItems.removeAt(index);
         }
       }
+      _recalculateDiscounts();
     });
   }
 
@@ -258,21 +247,25 @@ class _KasirPageState extends State<KasirPage> {
 
     setState(() => _isProcessing = true);
     try {
-      final user = supabase.auth.currentUser;
-      if (user == null) return;
+      final adminCtrl = context.read<AdminController>();
+      final uId = adminCtrl.userId;
+      if (uId == null) return;
 
       // 1. Fetch current product prices and details - We use cart item data directly
       double totalAmount = 0;
       List<Map<String, dynamic>> items = [];
 
       for (var cartItem in _cartItems) {
+        final Product p = cartItem['product'];
         final qty = cartItem['quantity'] as int;
         final price = cartItem['price'] as double;
         final total = price * qty;
 
         totalAmount += total;
         items.add({
-          'product_id': cartItem['product']['id'],
+          'id': "${DateTime.now().microsecondsSinceEpoch}_${p.id}",
+          'product_id': p.id,
+          'product_name': p.name,
           'quantity': qty,
           'unit_price': price,
           'total_price': total,
@@ -281,11 +274,18 @@ class _KasirPageState extends State<KasirPage> {
         });
       }
 
-      // 2. Save order and get ID
+      // 2. Subtract Discount
+      final discount = _discountData['total_discount'] as double;
+      final finalTotal = (totalAmount - discount).clamp(0.0, double.infinity);
+
+      // 3. Save order and get ID
       final txId = await _orderService.createOrder(
         storeId: _storeId!,
-        userId: user.id,
-        totalAmount: totalAmount,
+        userId: uId,
+        totalAmount: finalTotal,
+        cashReceived: _cashReceived,
+        change: _cashReceived - finalTotal,
+        paymentMethod: _selectedPaymentMethod,
         items: items,
       );
 
@@ -299,8 +299,9 @@ class _KasirPageState extends State<KasirPage> {
       // Prepare items for receipt with their names (from cart)
       final List<Map<String, dynamic>> receiptItems = [];
       for (var cartItem in _cartItems) {
+        final Product p = cartItem['product'];
         receiptItems.add({
-          'name': cartItem['product']['name'],
+          'name': p.name,
           'quantity': cartItem['quantity'],
           'unit_price': cartItem['price'],
           'total_price':
@@ -317,7 +318,7 @@ class _KasirPageState extends State<KasirPage> {
             .toUpperCase(), // Shorten for receipt
         createdAt: now,
         items: receiptItems,
-        totalAmount: totalAmount,
+        totalAmount: finalTotal,
         cashReceived: finalCash,
         change: finalChange,
         paymentMethod: _selectedPaymentMethod,
@@ -329,9 +330,14 @@ class _KasirPageState extends State<KasirPage> {
           _cartItems.clear();
           _cashReceived = 0;
           _cashController.clear();
+          _discountData = {
+            'total_discount': 0.0,
+            'promo_count': 0,
+            'promo_names': [],
+          };
         });
 
-        Navigator.pop(context); // Close cart sheet
+        Navigator.of(context).maybePop(); // Close cart sheet
 
         // Show Success Dialog
         showDialog(
@@ -340,7 +346,7 @@ class _KasirPageState extends State<KasirPage> {
           builder: (ctx) => PaymentSuccessDialog(
             pdfData: pdfData,
             transactionId: txId.substring(0, 8).toUpperCase(),
-            totalAmount: totalAmount,
+            totalAmount: finalTotal,
             cashReceived: finalCash,
             change: finalChange,
             storeName: currentStoreName,
@@ -384,27 +390,17 @@ class _KasirPageState extends State<KasirPage> {
   Future<void> _searchAndAddBySku(String sku) async {
     if (sku.isEmpty || _storeId == null) return;
 
-    // 1. Search for product with exact SKU
-    final res = await supabase
-        .from('products')
-        .select()
-        .eq('store_id', _storeId!)
-        .eq('sku', sku) // Exact match for scanning
-        .maybeSingle();
+    final db = context.read<AppDatabase>();
+    final res =
+        await (db.select(db.products)
+              ..where((t) => t.storeId.equals(_storeId!))
+              ..where((t) => t.sku.equals(sku))
+              ..where((t) => t.isDeleted.equals(false)))
+            .get();
 
-    if (res != null) {
+    if (res.isNotEmpty) {
       // Product found!
-      final product = res;
-
-      // check if deleted
-      if (product['is_deleted'] == true) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Produk ini sudah dihapus.")),
-          );
-        }
-        return;
-      }
+      final product = res.first;
 
       // Add to cart
       _handleProductSelection(product);
@@ -415,9 +411,7 @@ class _KasirPageState extends State<KasirPage> {
         _searchQuery = "";
       });
     } else {
-      // Not found by SKU, maybe keep the search query for the grid filter?
-      // But if it was a scan (enter pressed), usually we want to clear or notify.
-      // Let's just keep the filter active so the user sees "No product found" in the grid.
+      // Not found by SKU
     }
   }
 
@@ -427,27 +421,36 @@ class _KasirPageState extends State<KasirPage> {
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      drawer: const KasirDrawer(currentRoute: '/kasir'),
+      drawer: widget.showSidebar
+          ? const KasirDrawer(currentRoute: '/kasir')
+          : null,
       body: NestedScrollView(
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
           SliverAppBar(
             toolbarHeight: 74, // Increased to fit BigSearchBar
-            expandedHeight:
-                74, // Match toolbar height for simple fixed header, or keep expandable if needed
+            expandedHeight: 74,
             floating: true,
             pinned: true,
+            primary: true,
             backgroundColor: isDark ? const Color(0xFF1A1C1E) : Colors.white,
             elevation: 0,
             leading: Builder(
-              builder: (context) {
-                final isWide = MediaQuery.of(context).size.width > 900;
+              builder: (ctx) {
+                final isWide = MediaQuery.of(ctx).size.width >= 720;
                 if (isWide) return const SizedBox.shrink();
                 return IconButton(
                   icon: Icon(
                     CupertinoIcons.bars,
                     color: isDark ? Colors.white : Colors.black87,
                   ),
-                  onPressed: () => Scaffold.of(context).openDrawer(),
+                  onPressed: () {
+                    if (widget.onMenuPressed != null) {
+                      widget.onMenuPressed!();
+                    } else {
+                      // Fallback for standalone usage
+                      Scaffold.of(ctx).openDrawer();
+                    }
+                  },
                 );
               },
             ),
@@ -468,6 +471,23 @@ class _KasirPageState extends State<KasirPage> {
               ),
             ),
             actions: [
+              // Admin Dashboard Button (only for admin)
+              Consumer<AdminController>(
+                builder: (context, adminCtrl, _) {
+                  final isAdmin = adminCtrl.userProfile?['role'] == 'admin';
+                  if (!isAdmin) return const SizedBox.shrink();
+                  return IconButton(
+                    icon: Icon(
+                      CupertinoIcons.square_grid_2x2,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                    onPressed: () {
+                      Navigator.pushReplacementNamed(context, '/admin');
+                    },
+                    tooltip: "Dashboard Admin",
+                  );
+                },
+              ),
               IconButton(
                 icon: Stack(
                   children: [
@@ -503,11 +523,9 @@ class _KasirPageState extends State<KasirPage> {
             ? const Center(child: CircularProgressIndicator())
             : LayoutBuilder(
                 builder: (context, constraints) {
-                  final isWideScreen = constraints.maxWidth > 900;
-                  final adminCtrl = context.watch<AdminController>();
-                  final userProfile = adminCtrl.userProfile;
+                  final isWideScreen = constraints.maxWidth >= 720;
 
-                  if (isWideScreen) {
+                  if (isWideScreen && widget.showSidebar) {
                     return Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -520,91 +538,7 @@ class _KasirPageState extends State<KasirPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Redesigned Header
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  24,
-                                  24,
-                                  24,
-                                  8,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: BigSearchBar(
-                                        controller: _searchController,
-                                        hintText: "Search food or menu...",
-                                        onChanged: (val) => setState(
-                                          () =>
-                                              _searchQuery = val.toLowerCase(),
-                                        ),
-                                        onSubmitted: (val) =>
-                                            _searchAndAddBySku(val),
-                                        onClear: () {
-                                          setState(() {
-                                            _searchController.clear();
-                                            _searchQuery = "";
-                                          });
-                                        },
-                                      ),
-                                    ),
-                                    const SizedBox(width: 20),
-                                    // Profile Info (Mock for David Brown in image)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: isDark
-                                            ? const Color(0xFF2C2C2E)
-                                            : Colors.grey[100],
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 16,
-                                            backgroundColor: _primaryColor,
-                                            backgroundImage:
-                                                userProfile?['avatar_url'] !=
-                                                    null
-                                                ? NetworkImage(
-                                                    userProfile!['avatar_url'],
-                                                  )
-                                                : null,
-                                            child:
-                                                userProfile?['avatar_url'] ==
-                                                    null
-                                                ? const Icon(
-                                                    Icons.person,
-                                                    size: 20,
-                                                    color: Colors.white,
-                                                  )
-                                                : null,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            userProfile?['full_name'] ??
-                                                "David Brown",
-                                            style: GoogleFonts.inter(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w600,
-                                              color: isDark
-                                                  ? Colors.white
-                                                  : Colors.black87,
-                                            ),
-                                          ),
-                                          const Icon(
-                                            Icons.keyboard_arrow_down,
-                                            size: 18,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                              /* Redundant Header Removed */
 
                               // Explore Categories
                               Padding(
@@ -683,11 +617,11 @@ class _KasirPageState extends State<KasirPage> {
                                       : _categoryMap[_selectedCategory],
                                   filterType:
                                       _selectedFilter, // Need to implement this in ProductGrid
-                                  onItemTap: (product) {
+                                  onItemTap: (Product product) {
                                     _handleProductSelection(product);
                                     setState(() {});
                                   },
-                                  actionBuilder: (context, p) =>
+                                  actionBuilder: (context, Product p) =>
                                       _buildActionIcon(p),
                                 ),
                               ),
@@ -700,19 +634,21 @@ class _KasirPageState extends State<KasirPage> {
                           child: CartSidebar(
                             cartItems: _cartItems,
                             isProcessing: _isProcessing,
+                            discountData: _discountData,
                             onRemoveItem: (cartId) {
                               _removeFromCart(cartId);
                               setState(() {});
                             },
-                            onAddItem: (product, {options, notes, price}) {
-                              _handleProductSelection(
-                                product,
-                                options: options,
-                                notes: notes,
-                                price: price,
-                              );
-                              setState(() {});
-                            },
+                            onAddItem:
+                                (Product product, {options, notes, price}) {
+                                  _handleProductSelection(
+                                    product,
+                                    options: options,
+                                    notes: notes,
+                                    price: price,
+                                  );
+                                  setState(() {});
+                                },
                             onCheckout: (cash, method) {
                               setState(() {
                                 _cashReceived = cash;
@@ -787,11 +723,11 @@ class _KasirPageState extends State<KasirPage> {
                               categoryFilter: _selectedCategory == "Semua"
                                   ? "Semua"
                                   : _categoryMap[_selectedCategory],
-                              onItemTap: (product) {
+                              onItemTap: (Product product) {
                                 _handleProductSelection(product);
                                 setState(() {});
                               },
-                              actionBuilder: (context, p) =>
+                              actionBuilder: (context, Product p) =>
                                   _buildActionIcon(p),
                             ),
                           ),
@@ -811,7 +747,7 @@ class _KasirPageState extends State<KasirPage> {
                                 borderRadius: BorderRadius.circular(20),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: _primaryColor.withOpacity(0.4),
+                                    color: _primaryColor.withValues(alpha: 0.4),
                                     blurRadius: 20,
                                     offset: const Offset(0, 8),
                                   ),
@@ -822,7 +758,9 @@ class _KasirPageState extends State<KasirPage> {
                                   Container(
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.2),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.2,
+                                      ),
                                       shape: BoxShape.circle,
                                     ),
                                     child: Text(
@@ -908,13 +846,13 @@ class _KasirPageState extends State<KasirPage> {
     );
   }
 
-  Widget _buildActionIcon(Map<String, dynamic> p) {
-    final isStockManaged = p['is_stock_managed'] ?? true;
-    final stockQty = (p['stock_quantity'] ?? 0) as int;
+  Widget _buildActionIcon(Product p) {
+    final isStockManaged = p.isStockManaged;
+    final stockQty = p.stockQuantity ?? 0;
     final isOutOfStock = isStockManaged && stockQty <= 0;
 
     final inCartItems = _cartItems.where(
-      (item) => item['product']['id'] == p['id'],
+      (item) => (item['product'] as Product).id == p.id,
     );
     int qty = inCartItems.fold(
       0,
@@ -979,12 +917,13 @@ class _KasirPageState extends State<KasirPage> {
               child: CartSidebar(
                 cartItems: _cartItems,
                 isProcessing: _isProcessing,
+                discountData: _discountData,
                 onRemoveItem: (cartId) {
                   _removeFromCart(cartId);
                   setSheetState(() {});
                   setState(() {});
                 },
-                onAddItem: (product, {options, notes, price}) {
+                onAddItem: (Product product, {options, notes, price}) {
                   _handleProductSelection(
                     product,
                     options: options,

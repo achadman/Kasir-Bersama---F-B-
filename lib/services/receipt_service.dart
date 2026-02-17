@@ -1,4 +1,5 @@
-import 'dart:typed_data';
+import 'platform/file_manager.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:intl/intl.dart';
@@ -28,12 +29,20 @@ class ReceiptService {
     pw.ImageProvider? logoImage;
     if (storeLogoUrl != null && storeLogoUrl.isNotEmpty) {
       try {
-        final response = await http.get(Uri.parse(storeLogoUrl));
-        if (response.statusCode == 200) {
-          logoImage = pw.MemoryImage(response.bodyBytes);
+        if (storeLogoUrl.startsWith('http')) {
+          final response = await http.get(Uri.parse(storeLogoUrl));
+          if (response.statusCode == 200) {
+            logoImage = pw.MemoryImage(response.bodyBytes);
+          }
+        } else {
+          // Assume local file
+          final bytes = await FileManager().readBytes(storeLogoUrl);
+          if (bytes != null) {
+            logoImage = pw.MemoryImage(bytes);
+          }
         }
       } catch (e) {
-        print("Error loading store logo: $e");
+        debugPrint("Error loading store logo: $e");
       }
     }
 

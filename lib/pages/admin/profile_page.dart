@@ -1,22 +1,30 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import '../../services/platform/file_manager.dart';
+
+import 'package:provider/provider.dart';
 import '../../controllers/theme_controller.dart';
+import '../../controllers/admin_controller.dart';
+import '../../services/app_database.dart';
 import 'employee_page.dart';
 import 'package:flutter/cupertino.dart';
+import '../../controllers/settings_controller.dart';
+import '../../services/backup_service.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:io';
 
 class ProfilePage extends StatefulWidget {
   final String storeId;
-  const ProfilePage({super.key, required this.storeId});
+  final VoidCallback? onMenuPressed;
+  const ProfilePage({super.key, required this.storeId, this.onMenuPressed});
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  final supabase = Supabase.instance.client;
   bool _isLoading = false;
   String? _fullName;
   String? _avatarUrl;
@@ -31,33 +39,34 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _loadProfile() async {
-    final user = supabase.auth.currentUser;
-    if (user == null) return;
-    setState(() => _isLoading = true);
-    try {
-      final profile = await supabase
-          .from('profiles')
-          .select('full_name, avatar_url')
-          .eq('id', user.id)
-          .maybeSingle();
+    final adminCtrl = context.read<AdminController>();
+    final db = context.read<AppDatabase>();
 
-      if (mounted && profile != null) {
+    if (mounted) {
+      setState(() => _isLoading = true);
+    }
+
+    try {
+      if (mounted) {
         setState(() {
-          _fullName = profile['full_name'];
-          _avatarUrl = profile['avatar_url'];
+          _fullName = adminCtrl.userName;
+          _avatarUrl = adminCtrl.profileUrl;
+          _storeName = adminCtrl.storeName;
+          _storeLogo = adminCtrl.storeLogo;
         });
 
-        // Load Store Info
-        final store = await supabase
-            .from('stores')
-            .select('name, logo_url')
-            .eq('id', widget.storeId)
-            .maybeSingle();
+        // Load Store Info (already in controller, but if we need a fresh DB hit)
+        final storeData =
+            await (db.select(db.stores)
+                  ..where((t) => t.id.equals(widget.storeId))
+                  ..limit(1))
+                .getSingleOrNull();
 
-        if (mounted && store != null) {
+        if (mounted && storeData != null) {
           setState(() {
-            _storeName = store['name'];
-            _storeLogo = store['logo_url'];
+            _storeName = storeData.name;
+            _storeLogo = storeData.logoUrl;
+            _avatarUrl = storeData.adminAvatar;
           });
         }
       }
@@ -75,51 +84,22 @@ class _ProfilePageState extends State<ProfilePage> {
       imageQuality: 70,
     );
     if (image == null) return;
+    if (!mounted) return;
 
     setState(() => _isLoading = true);
     try {
-      final user = supabase.auth.currentUser;
-      final fileExt = image.path.split('.').last;
+      final adminCtrl = context.read<AdminController>();
+      final userId = adminCtrl.userId;
+
       final fileName =
-          '${user!.id}/avatar_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-      final filePath = fileName;
+          'profile_${userId}_${DateTime.now().millisecondsSinceEpoch}${p.extension(image.path)}';
+      final savedPath = await FileManager().saveFile(image, fileName);
 
-      // Use 'profiles' bucket consistently
-      await supabase.storage
-          .from('profiles')
-          .upload(
-            filePath,
-            File(image.path),
-            fileOptions: const FileOptions(upsert: true),
-          );
+      await adminCtrl.updateProfile(avatarUrl: savedPath);
 
-      final url = supabase.storage.from('profiles').getPublicUrl(filePath);
-
-      // Cleanup old avatar if exists
-      if (_avatarUrl != null) {
-        try {
-          final uri = Uri.parse(_avatarUrl!);
-          final pathSegments = uri.pathSegments;
-          final bucketIndex = pathSegments.indexOf('profiles');
-          if (bucketIndex != -1 && bucketIndex + 1 < pathSegments.length) {
-            final fullPathInsideBucket = pathSegments
-                .sublist(bucketIndex + 1)
-                .join('/');
-            await supabase.storage.from('profiles').remove([
-              fullPathInsideBucket,
-            ]);
-          }
-        } catch (e) {
-          debugPrint("Cleanup old avatar error: $e");
-        }
-      }
-
-      await supabase
-          .from('profiles')
-          .update({'avatar_url': url})
-          .eq('id', user.id);
-
-      setState(() => _avatarUrl = url);
+      setState(() {
+        _avatarUrl = savedPath;
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -194,12 +174,11 @@ class _ProfilePageState extends State<ProfilePage> {
     );
 
     if (newName != null && newName.isNotEmpty) {
+      if (!mounted) return;
       setState(() => _isLoading = true);
       try {
-        await supabase
-            .from('profiles')
-            .update({'full_name': newName})
-            .eq('id', supabase.auth.currentUser!.id);
+        final adminCtrl = context.read<AdminController>();
+        await adminCtrl.updateProfile(name: newName);
         setState(() => _fullName = newName);
       } catch (e) {
         debugPrint("Update Name Error: $e");
@@ -216,50 +195,19 @@ class _ProfilePageState extends State<ProfilePage> {
       imageQuality: 70,
     );
     if (image == null) return;
+    if (!mounted) return;
 
     setState(() => _isLoading = true);
     try {
-      final fileExt = image.path.split('.').last;
       final fileName =
-          'stores/${widget.storeId}/logo_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+          'store_${widget.storeId}_${DateTime.now().millisecondsSinceEpoch}${p.extension(image.path)}';
+      final savedPath = await FileManager().saveFile(image, fileName);
 
-      await supabase.storage
-          .from(
-            'profiles',
-          ) // Using profiles bucket for all branding images for now
-          .upload(
-            fileName,
-            File(image.path),
-            fileOptions: const FileOptions(upsert: true),
-          );
+      if (!mounted) return;
+      final adminCtrl = context.read<AdminController>();
+      await adminCtrl.updateStoreBranding(logoUrl: savedPath);
 
-      final url = supabase.storage.from('profiles').getPublicUrl(fileName);
-
-      // Cleanup old store logo if exists
-      if (_storeLogo != null) {
-        try {
-          final uri = Uri.parse(_storeLogo!);
-          final pathSegments = uri.pathSegments;
-          final bucketIndex = pathSegments.indexOf('profiles');
-          if (bucketIndex != -1 && bucketIndex + 1 < pathSegments.length) {
-            final fullPathInsideBucket = pathSegments
-                .sublist(bucketIndex + 1)
-                .join('/');
-            await supabase.storage.from('profiles').remove([
-              fullPathInsideBucket,
-            ]);
-          }
-        } catch (e) {
-          debugPrint("Cleanup old logo error: $e");
-        }
-      }
-
-      await supabase
-          .from('stores')
-          .update({'logo_url': url})
-          .eq('id', widget.storeId);
-
-      setState(() => _storeLogo = url);
+      setState(() => _storeLogo = savedPath);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -326,12 +274,11 @@ class _ProfilePageState extends State<ProfilePage> {
     );
 
     if (newName != null && newName.isNotEmpty) {
+      if (!mounted) return;
       setState(() => _isLoading = true);
       try {
-        await supabase
-            .from('stores')
-            .update({'name': newName})
-            .eq('id', widget.storeId);
+        final adminCtrl = context.read<AdminController>();
+        await adminCtrl.updateStoreBranding(name: newName);
         setState(() => _storeName = newName);
       } catch (e) {
         debugPrint("Update Store Name Error: $e");
@@ -343,14 +290,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _confirmResetStore() async {
     final controller = TextEditingController();
-    // Using a ValueNotifier or StatefulBuilder inside dialog for checkbox state
-    // But since we are outside build, we can't use simple bool var for dialog state update without StatefulBuilder
-    // which I already added in the previous (broken) attempt.
-    // Let's implement it cleanly.
-
-    // We need to check if AdminController is available or just do logic here.
-    // Doing logic here as previously planned to be safe.
-
     bool deleteProducts = false;
 
     await showDialog(
@@ -422,43 +361,11 @@ class _ProfilePageState extends State<ProfilePage> {
       },
     ).then((result) async {
       if (result == "RESET") {
+        if (!mounted) return;
         setState(() => _isLoading = true);
         try {
-          // Logic to wipe data
-          // final user = supabase.auth.currentUser; // Unused
-          // 1. Get Store IDd.isEmpty) return;
-
-          // Transactions
-          final txs = await supabase
-              .from('transactions')
-              .select('id')
-              .eq('store_id', widget.storeId);
-
-          if (txs.isNotEmpty) {
-            final txIds = txs.map((t) => t['id'] as String).toList();
-            await supabase
-                .from('transaction_items')
-                .delete()
-                .filter('transaction_id', 'in', txIds);
-            await supabase
-                .from('transactions')
-                .delete()
-                .filter('id', 'in', txIds);
-          }
-
-          // Products
-          if (deleteProducts) {
-            await supabase
-                .from('products')
-                .update({'is_deleted': true})
-                .eq('store_id', widget.storeId);
-          } else {
-            await supabase
-                .from('products')
-                .update({'stock_quantity': 0})
-                .eq('store_id', widget.storeId)
-                .eq('is_stock_managed', true);
-          }
+          final adminCtrl = context.read<AdminController>();
+          await adminCtrl.resetStore(deleteProducts: deleteProducts);
 
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -481,9 +388,163 @@ class _ProfilePageState extends State<ProfilePage> {
     });
   }
 
+  Future<void> _backupData() async {
+    setState(() => _isLoading = true);
+    try {
+      final db = context.read<AppDatabase>();
+      await BackupService(db).createFullBackup();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Backup berhasil dibuat & dibagikan!"),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Gagal backup: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _restoreData() async {
+    // 1. Pick File
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['zip'],
+    );
+
+    if (result == null || result.files.single.path == null) return;
+
+    final path = result.files.single.path;
+    if (path == null) return;
+
+    if (!mounted) return;
+
+    // 2. Confirmation Dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text(
+          "RESTORE DATA?",
+          style: GoogleFonts.poppins(
+            fontWeight: FontWeight.bold,
+            color: Colors.orange,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.warning_amber_rounded,
+              size: 48,
+              color: Colors.orange,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              "Perhatian: Tindakan ini akan MENGGANTI SEMUA DATA yang ada di aplikasi ini dengan data dari file backup.",
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              "Aplikasi akan otomatis RESTART setelah proses selesai.",
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Batal"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              "TIMPA & RESTORE",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    try {
+      final db = context.read<AppDatabase>();
+      await BackupService(db).restoreFullBackup(path);
+
+      // 6. Show Success & Restart/Prompt
+      if (mounted) {
+        setState(() => _isLoading = false);
+
+        // Check if Desktop
+        final isDesktop =
+            Theme.of(context).platform == TargetPlatform.windows ||
+            Theme.of(context).platform == TargetPlatform.linux ||
+            Theme.of(context).platform == TargetPlatform.macOS;
+
+        if (isDesktop) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              title: const Text("Restore Berhasil"),
+              content: const Text(
+                "Data berhasil dipulihkan.\n\nSilakan RESTART aplikasi secara manual untuk melihat perubahan.",
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => exit(0), // Quit the app
+                  child: const Text("Keluar Aplikasi"),
+                ),
+              ],
+            ),
+          );
+        } else {
+          // Mobile: Will restart automatically
+        }
+      }
+    } catch (e, stackTrace) {
+      debugPrint("Restore Error: $e");
+      debugPrint("Stack Trace: $stackTrace");
+      if (mounted) {
+        setState(() => _isLoading = false);
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text("Gagal Restore"),
+            content: Text("Error: $e"),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text("OK"),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final user = supabase.auth.currentUser;
+    final adminCtrl = context.watch<AdminController>();
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -498,9 +559,36 @@ class _ProfilePageState extends State<ProfilePage> {
             color: isDark ? Colors.white : const Color(0xFF2D3436),
           ),
         ),
-        centerTitle: true,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        leading: Builder(
+          builder: (ctx) {
+            final isWide = MediaQuery.of(ctx).size.width >= 720;
+            if (isWide) return const SizedBox.shrink();
+
+            if (Navigator.canPop(context)) {
+              return IconButton(
+                icon: Icon(
+                  CupertinoIcons.back,
+                  color: isDark ? Colors.white : const Color(0xFF2D3436),
+                ),
+                onPressed: () => Navigator.pop(context),
+              );
+            }
+
+            return IconButton(
+              icon: Icon(
+                CupertinoIcons.bars,
+                color: isDark ? Colors.white : const Color(0xFF2D3436),
+              ),
+              onPressed: () {
+                if (widget.onMenuPressed != null) {
+                  widget.onMenuPressed!();
+                } else {
+                  Scaffold.of(context).openDrawer();
+                }
+              },
+            );
+          },
+        ),
         iconTheme: IconThemeData(
           color: isDark ? Colors.white : const Color(0xFF2D3436),
         ),
@@ -513,12 +601,14 @@ class _ProfilePageState extends State<ProfilePage> {
               child: Column(
                 children: [
                   const SizedBox(height: 20),
-                  _buildProfileHeader(user),
+                  _buildProfileHeader(adminCtrl),
                   const SizedBox(height: 30),
-                  _buildSectionTitle("PENGATURAN AKUN"),
+                  _buildSectionTitle(
+                    SettingsController.instance.getString('admin_account'),
+                  ),
                   _buildMenuSection([
                     _ProfileMenuItem(
-                      label: "Edit Nama Admin",
+                      label: SettingsController.instance.getString('edit_name'),
                       icon: CupertinoIcons.person,
                       onTap: _editName,
                     ),
@@ -539,10 +629,14 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ]),
                   const SizedBox(height: 30),
-                  _buildSectionTitle("BRANDING TOKO"),
+                  _buildSectionTitle(
+                    SettingsController.instance.getString('branding'),
+                  ),
                   _buildMenuSection([
                     _ProfileMenuItem(
-                      label: "Ubah Nama Toko",
+                      label: SettingsController.instance.getString(
+                        'edit_store_name',
+                      ),
                       icon: CupertinoIcons.tag,
                       onTap: _editStoreName,
                     ),
@@ -557,7 +651,9 @@ class _ProfilePageState extends State<ProfilePage> {
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(6),
                                 image: DecorationImage(
-                                  image: NetworkImage(_storeLogo!),
+                                  image: FileManager().getImageProvider(
+                                    _storeLogo!,
+                                  ),
                                   fit: BoxFit.cover,
                                 ),
                               ),
@@ -566,7 +662,36 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ]),
                   const SizedBox(height: 20),
+                  _buildSectionTitle(
+                    SettingsController.instance.getString('app_settings'),
+                  ),
+                  _buildAppSettings(),
+                  const SizedBox(height: 20),
                   _buildThemeToggle(),
+                  const SizedBox(height: 20),
+                  _buildSectionTitle("Backup & Restore"),
+                  _buildMenuSection([
+                    _ProfileMenuItem(
+                      label: "Export Full Backup",
+                      icon: CupertinoIcons.cloud_upload,
+                      onTap: _backupData,
+                      trailing: const Icon(
+                        CupertinoIcons.share,
+                        size: 18,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    _ProfileMenuItem(
+                      label: "Import Backup",
+                      icon: CupertinoIcons.cloud_download,
+                      onTap: _restoreData,
+                      trailing: const Icon(
+                        CupertinoIcons.add,
+                        size: 18,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ]),
                   const SizedBox(height: 30),
                   _buildSectionTitle("DANGER ZONE"), // Zona Berbahaya
                   Container(
@@ -640,7 +765,6 @@ class _ProfilePageState extends State<ProfilePage> {
                           );
 
                           if (shouldLogout == true) {
-                            await supabase.auth.signOut();
                             if (!context.mounted) return;
                             Navigator.pushReplacementNamed(context, '/login');
                           }
@@ -650,7 +774,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           color: Colors.red,
                         ),
                         label: Text(
-                          "Keluar Sesi",
+                          SettingsController.instance.getString('logout'),
                           style: GoogleFonts.poppins(
                             color: Colors.red,
                             fontWeight: FontWeight.bold,
@@ -678,7 +802,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildProfileHeader(User? user) {
+  Widget _buildProfileHeader(AdminController adminCtrl) {
     return Column(
       children: [
         Stack(
@@ -693,7 +817,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 radius: 60,
                 backgroundColor: Colors.grey[200],
                 backgroundImage: _avatarUrl != null
-                    ? NetworkImage(_avatarUrl!)
+                    ? FileManager().getImageProvider(_avatarUrl!)
                     : null,
                 child: _avatarUrl == null
                     ? const Icon(Icons.person, size: 60, color: Colors.grey)
@@ -734,7 +858,7 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ),
         Text(
-          user?.email ?? '',
+          "Admin Local Session",
           style: GoogleFonts.inter(color: Colors.grey[600]),
         ),
         const SizedBox(height: 10),
@@ -821,59 +945,176 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildThemeToggle() {
+  Widget _buildAppSettings() {
+    final settings = SettingsController.instance;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(
-              alpha: Theme.of(context).brightness == Brightness.dark
-                  ? 0.2
-                  : 0.03,
-            ),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
         ],
       ),
-      child: ValueListenableBuilder<ThemeMode>(
-        valueListenable: ThemeController.instance.themeMode,
-        builder: (context, mode, child) {
-          final isDark = mode == ThemeMode.dark;
-          return SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            secondary: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: (isDark ? Colors.indigo : Colors.orange).withValues(
-                  alpha: 0.1,
+      child: Column(
+        children: [
+          // Language Setting
+          ValueListenableBuilder<Locale>(
+            valueListenable: settings.locale,
+            builder: (context, locale, child) {
+              final isIndo = locale.languageCode == 'id';
+              return ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 5,
                 ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                isDark ? CupertinoIcons.moon_fill : CupertinoIcons.sun_max_fill,
-                color: isDark ? Colors.indigo : Colors.orange,
-                size: 22,
-              ),
-            ),
-            title: Text(
-              "Mode Gelap",
-              style: GoogleFonts.inter(
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white : const Color(0xFF2D3436),
-              ),
-            ),
-            value: isDark,
-            activeThumbColor: _primaryColor, // fixed deprecated activeColor
-            onChanged: (val) => ThemeController.instance.toggleTheme(),
-          );
-        },
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    CupertinoIcons.globe,
+                    color: Colors.blue,
+                    size: 22,
+                  ),
+                ),
+                title: Text(
+                  settings.getString('language'),
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : const Color(0xFF2D3436),
+                  ),
+                ),
+                trailing: TextButton(
+                  onPressed: () {
+                    settings.setLocale(isIndo ? 'en' : 'id');
+                  },
+                  child: Text(
+                    isIndo ? "Bhs. Indonesia" : "English",
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          const Divider(indent: 70, endIndent: 20, height: 1),
+          // Text Scale Setting
+          ValueListenableBuilder<double>(
+            valueListenable: settings.textScale,
+            builder: (context, scale, child) {
+              return ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 5,
+                ),
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    CupertinoIcons.textformat,
+                    color: Colors.teal,
+                    size: 22,
+                  ),
+                ),
+                title: Text(
+                  settings.getString('text_size'),
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : const Color(0xFF2D3436),
+                  ),
+                ),
+                subtitle: Slider(
+                  value: scale,
+                  min: 0.8,
+                  max: SettingsController.maxTextScale,
+                  divisions: 5,
+                  activeColor: Colors.teal,
+                  onChanged: (val) {
+                    settings.setTextScale(val);
+                  },
+                ),
+                trailing: Text(
+                  "${(scale * 100).toInt()}%",
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.teal,
+                  ),
+                ),
+              );
+            },
+          ),
+          const Divider(indent: 70, endIndent: 20, height: 1),
+          // Dark Mode Setting
+          _buildThemeToggleInside(),
+        ],
       ),
     );
+  }
+
+  Widget _buildThemeToggleInside() {
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.instance.themeMode,
+      builder: (context, mode, child) {
+        final isDarkMode = mode == ThemeMode.dark;
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 5,
+          ),
+          leading: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: (isDarkMode ? Colors.indigo : Colors.orange).withValues(
+                alpha: 0.1,
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              isDarkMode
+                  ? CupertinoIcons.moon_fill
+                  : CupertinoIcons.sun_max_fill,
+              color: isDarkMode ? Colors.indigo : Colors.orange,
+              size: 22,
+            ),
+          ),
+          title: Text(
+            SettingsController.instance.getString('dark_mode'),
+            style: GoogleFonts.inter(
+              fontWeight: FontWeight.w600,
+              color: isDarkMode ? Colors.white : const Color(0xFF2D3436),
+            ),
+          ),
+          trailing: CupertinoSwitch(
+            value: isDarkMode,
+            onChanged: (val) => ThemeController.instance.toggleTheme(),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
+  // Placeholder for compatibility, logic moved inside _buildAppSettings
+  Widget _buildThemeToggle() {
+    return const SizedBox.shrink();
   }
 
   Widget _buildSectionTitle(String title) {

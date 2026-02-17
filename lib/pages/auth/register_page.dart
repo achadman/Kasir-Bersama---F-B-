@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
+import '../../services/app_database.dart';
+import 'package:provider/provider.dart';
+import 'package:drift/drift.dart' as drift;
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -10,7 +13,8 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final SupabaseClient supabase = Supabase.instance.client;
+  late AppDatabase _db;
+  final _uuid = const Uuid();
 
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -21,59 +25,70 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _db = Provider.of<AppDatabase>(context);
+  }
+
   Future<void> _register() async {
-    if (_emailController.text.trim().isEmpty ||
-        _passwordController.text.trim().isEmpty ||
-        _confirmPasswordController.text.trim().isEmpty) {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final confirmPassword = _confirmPasswordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
       _showError("Semua field harus diisi");
       return;
     }
 
-    if (_passwordController.text != _confirmPasswordController.text) {
+    if (password != confirmPassword) {
       _showError("Password dan Konfirmasi Password tidak cocok");
       return;
     }
 
     setState(() => _isLoading = true);
     try {
-      final email = _emailController.text.trim();
+      // 1. Create Local Store
+      final storeId = _uuid.v4();
+      await _db
+          .into(_db.stores)
+          .insert(
+            StoresCompanion.insert(
+              id: storeId,
+              name: const drift.Value('Toko Saya'),
+              adminName: drift.Value(email.split('@').first),
+              createdAt: drift.Value(DateTime.now()),
+            ),
+          );
 
-      // Mendaftarkan user baru dengan role default 'owner'
-      final AuthResponse res = await supabase.auth.signUp(
-        email: email,
-        password: _passwordController.text.trim(),
-        data: {'role': 'owner'},
-      );
-
-      if (res.user != null) {
-        // 1. Create unique store for new owner
-        final storeRes = await supabase
-            .from('stores')
-            .insert({'name': 'Toko Saya'})
-            .select()
-            .single();
-
-        final String newStoreId = storeRes['id'];
-
-        // 2. Update profil yang dibuat oleh trigger Supabase
-        await supabase
-            .from('profiles')
-            .update({'role': 'owner', 'store_id': newStoreId})
-            .eq('id', res.user!.id);
-      }
+      // 2. Create Local Profile
+      final userId = _uuid.v4();
+      await _db
+          .into(_db.profiles)
+          .insert(
+            ProfilesCompanion.insert(
+              id: userId,
+              email: drift.Value(email),
+              password: drift.Value(password),
+              fullName: drift.Value(email.split('@').first),
+              role: const drift.Value('owner'),
+              storeId: drift.Value(storeId),
+              lastUpdated: drift.Value(DateTime.now()),
+              createdAt: drift.Value(DateTime.now()),
+            ),
+          );
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Registrasi Berhasil! Silakan cek email atau Login."),
+          content: Text("Registrasi Berhasil! Silakan Login."),
           backgroundColor: Colors.green,
         ),
       );
       Navigator.pop(context);
-    } on AuthException catch (e) {
-      _showError(e.message);
     } catch (e) {
+      debugPrint("Register Error: $e");
       _showError("Kesalahan: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -119,7 +134,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 20,
                         offset: const Offset(0, 10),
                       ),

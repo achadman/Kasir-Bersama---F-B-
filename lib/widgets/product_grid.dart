@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
+import '../services/platform/file_manager.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:isar/isar.dart';
-import '../services/isar_service.dart';
-import '../models/local/local_product.dart';
+import 'package:provider/provider.dart';
+import '../services/app_database.dart';
 
 class ProductGrid extends StatelessWidget {
   final String storeId;
   final String searchQuery;
   final String? categoryFilter;
   final String filterType; // "All", "Popular", "Recent"
-  final Function(Map<String, dynamic>) onItemTap;
-  final Widget Function(BuildContext, Map<String, dynamic>)? extraInfoBuilder;
-  final Widget Function(BuildContext, Map<String, dynamic>)? actionBuilder;
+  final Function(Product) onItemTap;
+  final Widget Function(BuildContext, Product)? extraInfoBuilder;
+  final Widget Function(BuildContext, Product)? actionBuilder;
 
   const ProductGrid({
     super.key,
@@ -39,13 +39,19 @@ class ProductGrid extends StatelessWidget {
       decimalDigits: 0,
     );
 
-    final isar = IsarService().isar;
+    final db = Provider.of<AppDatabase>(context);
 
-    return StreamBuilder<List<LocalProduct>>(
-      stream: isar.localProducts
-          .filter()
-          .storeIdEqualTo(storeId)
-          .watch(fireImmediately: true),
+    // Filter using Drift Query DSL
+    final query = db.select(db.products)
+      ..where((t) => t.storeId.equals(storeId))
+      ..where((t) => t.isDeleted.equals(false));
+
+    if (categoryFilter != null && categoryFilter != "Semua") {
+      query.where((t) => t.categoryId.equals(categoryFilter!));
+    }
+
+    return StreamBuilder<List<Product>>(
+      stream: query.watch(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Center(child: Text("Error: ${snapshot.error}"));
@@ -56,35 +62,29 @@ class ProductGrid extends StatelessWidget {
 
         var localProducts = snapshot.data!;
 
-        // 1. Filter localProducts
+        // 1. Client-side search (Drift can do this too, but let's keep logic similar for now)
         var filteredProducts = localProducts.where((p) {
-          // Categories
-          if (categoryFilter != null && categoryFilter != "Semua") {
-            if (p.categoryId != categoryFilter) return false;
-          }
-
-          // Search
           if (searchQuery.isNotEmpty) {
-            final query = searchQuery.toLowerCase();
-            if (!p.name.toLowerCase().contains(query) &&
-                !(p.sku ?? '').toLowerCase().contains(query)) {
+            final q = searchQuery.toLowerCase();
+            final name = (p.name ?? '').toLowerCase();
+            final sku = (p.sku ?? '').toLowerCase();
+            if (!name.contains(q) && !sku.contains(q)) {
               return false;
             }
           }
-
           return true;
         }).toList();
 
         // 2. Sort
         if (filterType == "Recent") {
-          filteredProducts.sort(
-            (a, b) => (b.lastUpdated ?? DateTime(2000)).compareTo(
-              a.lastUpdated ?? DateTime(2000),
-            ),
-          );
+          filteredProducts.sort((a, b) {
+            final da = a.lastUpdated ?? DateTime(2000);
+            final db = b.lastUpdated ?? DateTime(2000);
+            return db.compareTo(da);
+          });
         } else if (filterType == "Popular") {
           filteredProducts.sort(
-            (a, b) => b.stockQuantity.compareTo(a.stockQuantity),
+            (a, b) => (b.stockQuantity ?? 0).compareTo(a.stockQuantity ?? 0),
           );
         }
 
@@ -110,23 +110,7 @@ class ProductGrid extends StatelessWidget {
           );
         }
 
-        // 3. Convert back to Map for the UI
-        final products = filteredProducts.map((p) {
-          return {
-                'id': p.supabaseId,
-                'name': p.name,
-                'sale_price': p.salePrice,
-                'buy_price': p
-                    .basePrice, // Use basePrice as original buy price for discount calculation
-                'stock_quantity': p.stockQuantity,
-                'is_stock_managed': p.isStockManaged,
-                'image_url': p.imageUrl,
-                'sku': p.sku,
-                'category_id': p.categoryId,
-                'store_id': p.storeId,
-              }
-              as Map<String, dynamic>;
-        }).toList();
+        final products = filteredProducts;
 
         return GridView.builder(
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
@@ -141,13 +125,12 @@ class ProductGrid extends StatelessWidget {
             final p = products[i];
 
             // Stock Logic
-            final bool isStockManaged = p['is_stock_managed'] as bool? ?? true;
-            final int stockQty = p['stock_quantity'] as int? ?? 0;
+            final bool isStockManaged = p.isStockManaged;
+            final int stockQty = p.stockQuantity ?? 0;
             final bool isOutOfStock = isStockManaged && stockQty <= 0;
 
-            final num originalPrice = p['buy_price'] as num? ?? 0;
-            final num salePrice = p['sale_price'] as num? ?? 0;
-            final bool hasDiscount = originalPrice > salePrice;
+            // Base price for discount display
+            final double salePrice = p.salePrice ?? 0;
 
             return Opacity(
               opacity: isOutOfStock ? 0.6 : 1.0,
@@ -157,7 +140,7 @@ class ProductGrid extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -182,50 +165,60 @@ class ProductGrid extends StatelessWidget {
                                 color: isDark
                                     ? Colors.grey[800]
                                     : Colors.grey[50],
-                                image: p['image_url'] != null
+                                image: p.imageUrl != null
                                     ? DecorationImage(
-                                        image: NetworkImage(
-                                          p['image_url'] as String,
+                                        image: FileManager().getImageProvider(
+                                          p.imageUrl!,
                                         ),
                                         fit: BoxFit.cover,
                                       )
                                     : null,
                               ),
-                              child: p['image_url'] == null
-                                  ? Center(
-                                      child: Icon(
-                                        Icons.fastfood_rounded,
-                                        size: 40,
-                                        color: isDark
-                                            ? Colors.grey[600]
-                                            : Colors.orange[100],
-                                      ),
-                                    )
-                                  : null,
                             ),
-                            if (hasDiscount)
-                              Positioned(
-                                top: 8,
-                                left: 8,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    "${((originalPrice - salePrice) / originalPrice * 100).toInt()}%",
-                                    style: GoogleFonts.inter(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
+                            // Promo Badge
+                            StreamBuilder<List<PromotionItem>>(
+                              stream:
+                                  (db.select(
+                                        db.promotionItems,
+                                      )..where((t) => t.productId.equals(p.id)))
+                                      .watch(),
+                              builder: (context, promoSnapshot) {
+                                if (promoSnapshot.hasData &&
+                                    promoSnapshot.data!.isNotEmpty) {
+                                  return Positioned(
+                                    top: 10,
+                                    left: 10,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red,
+                                        borderRadius: BorderRadius.circular(8),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withValues(
+                                              alpha: 0.2,
+                                            ),
+                                            blurRadius: 4,
+                                          ),
+                                        ],
+                                      ),
+                                      child: Text(
+                                        "PROMO",
+                                        style: GoogleFonts.inter(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              ),
+                                  );
+                                }
+                                return const SizedBox();
+                              },
+                            ),
                           ],
                         ),
                       ),
@@ -243,7 +236,7 @@ class ProductGrid extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    (p['name'] as String?) ?? 'Tanpa Nama',
+                                    p.name ?? 'Tanpa Nama',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: GoogleFonts.poppins(
@@ -261,15 +254,6 @@ class ProductGrid extends StatelessWidget {
                                       color: primaryColor,
                                     ),
                                   ),
-                                  if (hasDiscount)
-                                    Text(
-                                      currencyFormat.format(originalPrice),
-                                      style: GoogleFonts.inter(
-                                        fontSize: 10,
-                                        color: Colors.grey,
-                                        decoration: TextDecoration.lineThrough,
-                                      ),
-                                    ),
                                 ],
                               ),
 

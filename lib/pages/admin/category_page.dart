@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:provider/provider.dart';
+import '../../services/app_database.dart';
+import 'package:drift/drift.dart' as drift;
+import 'package:uuid/uuid.dart';
 
 class CategoryPage extends StatefulWidget {
   final String storeId;
-  const CategoryPage({super.key, required this.storeId});
+  final VoidCallback? onMenuPressed;
+  const CategoryPage({super.key, required this.storeId, this.onMenuPressed});
 
   @override
   State<CategoryPage> createState() => _CategoryPageState();
 }
 
 class _CategoryPageState extends State<CategoryPage> {
-  final supabase = Supabase.instance.client;
   bool _isLoading = true;
-  List<Map<String, dynamic>> _categories = [];
+  List<Category> _categories = [];
 
   @override
   void initState() {
@@ -24,27 +27,28 @@ class _CategoryPageState extends State<CategoryPage> {
 
   Future<void> _fetchCategories() async {
     try {
-      final data = await supabase
-          .from('categories')
-          .select()
-          .eq('store_id', widget.storeId)
-          .order('name', ascending: true);
+      final db = Provider.of<AppDatabase>(context, listen: false);
+      final data =
+          await (db.select(db.categories)
+                ..where((t) => t.storeId.equals(widget.storeId))
+                ..orderBy([(t) => drift.OrderingTerm.asc(t.name)]))
+              .get();
 
       if (mounted) {
         setState(() {
-          _categories = List<Map<String, dynamic>>.from(data);
+          _categories = data;
           _isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint("Error fetching categories: $e");
+      debugPrint("CategoryPage: Fetch failed: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _showCategorySheet({Map<String, dynamic>? category}) async {
+  Future<void> _showCategorySheet({Category? category}) async {
     final isEditing = category != null;
-    final controller = TextEditingController(text: category?['name']);
+    final controller = TextEditingController(text: category?.name);
 
     await showModalBottomSheet(
       context: context,
@@ -121,17 +125,29 @@ class _CategoryPageState extends State<CategoryPage> {
                     final name = controller.text.trim();
                     if (name.isEmpty) return;
 
+                    final db = Provider.of<AppDatabase>(context, listen: false);
                     try {
                       if (isEditing) {
-                        await supabase
-                            .from('categories')
-                            .update({'name': name})
-                            .eq('id', category['id']);
+                        await (db.update(
+                          db.categories,
+                        )..where((t) => t.id.equals(category.id))).write(
+                          CategoriesCompanion(
+                            name: drift.Value(name),
+                            lastUpdated: drift.Value(DateTime.now()),
+                          ),
+                        );
                       } else {
-                        await supabase.from('categories').insert({
-                          'name': name,
-                          'store_id': widget.storeId,
-                        });
+                        final id = const Uuid().v4();
+                        await db
+                            .into(db.categories)
+                            .insert(
+                              CategoriesCompanion.insert(
+                                id: id,
+                                name: drift.Value(name),
+                                storeId: drift.Value(widget.storeId),
+                                lastUpdated: drift.Value(DateTime.now()),
+                              ),
+                            );
                       }
                       if (context.mounted) {
                         Navigator.pop(ctx);
@@ -164,6 +180,7 @@ class _CategoryPageState extends State<CategoryPage> {
   }
 
   Future<void> _deleteCategory(String id) async {
+    final db = Provider.of<AppDatabase>(context, listen: false);
     final confirm = await showCupertinoDialog<bool>(
       context: context,
       builder: (ctx) => CupertinoAlertDialog(
@@ -183,9 +200,9 @@ class _CategoryPageState extends State<CategoryPage> {
       ),
     );
 
-    if (confirm == true) {
+    if (confirm == true && mounted) {
       try {
-        await supabase.from('categories').delete().eq('id', id);
+        await (db.delete(db.categories)..where((t) => t.id.equals(id))).go();
         _fetchCategories();
       } catch (e) {
         debugPrint("Error deleting category: $e");
@@ -209,22 +226,37 @@ class _CategoryPageState extends State<CategoryPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        leading: IconButton(
-          icon: Icon(
-            CupertinoIcons.back,
-            color: isDark ? Colors.white : const Color(0xFF2D3436),
-          ),
-          onPressed: () => Navigator.pop(context),
+        leading: Builder(
+          builder: (ctx) {
+            final isWide = MediaQuery.of(ctx).size.width >= 720;
+            if (isWide) return const SizedBox.shrink();
+
+            if (Navigator.canPop(context)) {
+              return IconButton(
+                icon: Icon(
+                  CupertinoIcons.back,
+                  color: isDark ? Colors.white : const Color(0xFF2D3436),
+                ),
+                onPressed: () => Navigator.pop(context),
+              );
+            }
+
+            return IconButton(
+              icon: Icon(
+                CupertinoIcons.bars,
+                color: isDark ? Colors.white : const Color(0xFF2D3436),
+              ),
+              onPressed: () {
+                if (widget.onMenuPressed != null) {
+                  widget.onMenuPressed!();
+                } else {
+                  Scaffold.of(context).openDrawer();
+                }
+              },
+            );
+          },
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(
-              CupertinoIcons.add_circled,
-              color: Color(0xFFEA5700),
-            ),
-            onPressed: () => _showCategorySheet(),
-          ),
-        ],
+        actions: const [],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -272,7 +304,7 @@ class _CategoryPageState extends State<CategoryPage> {
                       ),
                     ),
                     title: Text(
-                      cat['name'],
+                      cat.name ?? '',
                       style: GoogleFonts.poppins(
                         fontWeight: FontWeight.w600,
                         color: isDark ? Colors.white : const Color(0xFF2D3436),
@@ -295,7 +327,7 @@ class _CategoryPageState extends State<CategoryPage> {
                             size: 20,
                             color: Colors.redAccent,
                           ),
-                          onPressed: () => _deleteCategory(cat['id']),
+                          onPressed: () => _deleteCategory(cat.id),
                         ),
                       ],
                     ),
@@ -303,6 +335,18 @@ class _CategoryPageState extends State<CategoryPage> {
                 );
               },
             ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showCategorySheet(),
+        backgroundColor: const Color(0xFFEA5700),
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: Text(
+          "Tambah Kategori",
+          style: GoogleFonts.poppins(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      ),
     );
   }
 }

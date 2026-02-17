@@ -34,7 +34,9 @@ class LowStockDialog extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
               ),
               child: Row(
                 children: [
@@ -82,10 +84,8 @@ class LowStockDialog extends StatelessWidget {
                       padding: const EdgeInsets.all(12),
                       itemCount: lowStockItems.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (ctx, i) => _LowStockItem(
-                        item: lowStockItems[i],
-                        index: i,
-                      ),
+                      itemBuilder: (ctx, i) =>
+                          _LowStockItem(item: lowStockItems[i], index: i),
                     ),
             ),
             // Footer
@@ -111,7 +111,11 @@ class _StockSafe extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.check_circle_outline, size: 60, color: Colors.green.shade300),
+          Icon(
+            Icons.check_circle_outline,
+            size: 60,
+            color: Colors.green.shade300,
+          ),
           const SizedBox(height: 10),
           const Text(
             "Stok Aman",
@@ -147,10 +151,7 @@ class _LowStockItem extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 5,
-          ),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 5),
         ],
         border: Border.all(color: Colors.grey.shade100),
       ),
@@ -179,7 +180,10 @@ class _LowStockItem extends StatelessWidget {
               children: [
                 Text(
                   name,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 ClipRRect(

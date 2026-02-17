@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../services/app_database.dart';
+import 'package:provider/provider.dart';
+import '../../controllers/admin_controller.dart';
+import '../../services/app_database.dart'
+    show AppDatabase; // Keep AppDatabase visible
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -10,48 +14,64 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final supabase = Supabase.instance.client;
+  late AppDatabase _db;
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _db = Provider.of<AppDatabase>(context);
+  }
+
   Future<void> _login() async {
-    if (_emailController.text.trim().isEmpty ||
-        _passwordController.text.trim().isEmpty) {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
       _showError("Email dan Password tidak boleh kosong");
       return;
     }
 
     setState(() => _isLoading = true);
     try {
-      final AuthResponse res = await supabase.auth.signInWithPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
+      // Offline Authentication: Check local database
+      final users =
+          await (_db.select(_db.profiles)
+                ..where((t) => t.email.equals(email))
+                ..limit(1))
+              .get();
 
-      final User? user = res.user;
+      if (users.isEmpty) {
+        _showError("Akun tidak ditemukan. Silakan registrasi terlebih dahulu.");
+        return;
+      }
 
-      if (user != null) {
-        final data = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', user.id)
-            .single();
+      final user = users.first;
 
+      // Basic password validation for local POC
+      if (user.password != password) {
+        _showError("Password salah.");
+        return;
+      }
+
+      if (mounted) {
+        final adminCtrl = Provider.of<AdminController>(context, listen: false);
+        await adminCtrl.loadInitialData(); // Load store and profile info
         if (!mounted) return;
 
-        String role = data['role'];
+        String role = user.role;
         if (role == 'admin' || role == 'owner') {
           Navigator.pushReplacementNamed(context, '/admin');
         } else {
           Navigator.pushReplacementNamed(context, '/kasir');
         }
       }
-    } on AuthException catch (e) {
-      _showError("Login Gagal: ${e.message}");
     } catch (e) {
-      _showError("Terjadi kesalahan koneksi");
+      debugPrint("Login Error: $e");
+      _showError("Terjadi kesalahan sistem: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -96,7 +116,7 @@ class _LoginPageState extends State<LoginPage> {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 20,
                         offset: const Offset(0, 10),
                       ),

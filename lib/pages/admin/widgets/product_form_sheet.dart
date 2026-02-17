@@ -1,11 +1,15 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../services/platform/file_manager.dart';
+import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
+import 'package:provider/provider.dart';
+import '../../../services/app_database.dart';
+import 'package:drift/drift.dart' as drift;
 
 class ProductFormSheet extends StatefulWidget {
-  final Map<String, dynamic>? product; // If null, Add mode. If not, Edit mode.
+  final Product? product; // If null, Add mode. If not, Edit mode.
   final String storeId;
 
   const ProductFormSheet({super.key, this.product, required this.storeId});
@@ -24,7 +28,6 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
   final _stockController = TextEditingController();
   final _maxStockController = TextEditingController();
 
-  final supabase = Supabase.instance.client;
   bool _isLoading = false;
 
   // Stock Management Logic
@@ -37,7 +40,7 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
 
   // Category Logic
   String? _selectedCategoryId;
-  List<Map<String, dynamic>> _categories = [];
+  List<Category> _categories = [];
 
   // Variant & Options Logic
   bool _enableVariants = false;
@@ -50,21 +53,16 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
     super.initState();
     _loadCategories();
     if (widget.product != null) {
-      _nameController.text = widget.product!['name'] ?? '';
-      _skuController.text = widget.product!['sku'] ?? '';
-      _descriptionController.text = widget.product!['description'] ?? '';
-      _buyPriceController.text = (widget.product!['buy_price'] ?? 0).toString();
-      _salePriceController.text = (widget.product!['sale_price'] ?? 0)
-          .toString();
-      _stockController.text = (widget.product!['stock_quantity'] ?? 0)
-          .toString();
-      // _maxStockController.text = (widget.product!['max_stock'] ?? '')
-      //     .toString();
-      // if (_maxStockController.text == 'null') _maxStockController.text = '';
+      _nameController.text = widget.product!.name ?? '';
+      _skuController.text = widget.product!.sku ?? '';
+      _descriptionController.text = widget.product!.description ?? '';
+      _buyPriceController.text = (widget.product!.basePrice ?? 0).toString();
+      _salePriceController.text = (widget.product!.salePrice ?? 0).toString();
+      _stockController.text = (widget.product!.stockQuantity ?? 0).toString();
 
-      _isStockManaged = widget.product!['is_stock_managed'] ?? true;
-      _currentImageUrl = widget.product!['image_url'];
-      _selectedCategoryId = widget.product!['category_id'];
+      _isStockManaged = widget.product!.isStockManaged;
+      _currentImageUrl = widget.product!.imageUrl;
+      _selectedCategoryId = widget.product!.categoryId;
       _fetchOptions();
     }
   }
@@ -72,14 +70,36 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
   Future<void> _fetchOptions() async {
     if (widget.product == null) return;
     try {
-      final options = await supabase
-          .from('product_options')
-          .select('*, product_option_values(*)')
-          .eq('product_id', widget.product!['id']);
+      final db = Provider.of<AppDatabase>(context, listen: false);
+      final options = await (db.select(
+        db.productOptions,
+      )..where((t) => t.productId.equals(widget.product!.id))).get();
+
+      final List<Map<String, dynamic>> formattedOptions = [];
+      for (var opt in options) {
+        final values = await (db.select(
+          db.productOptionValues,
+        )..where((t) => t.optionId.equals(opt.id))).get();
+
+        formattedOptions.add({
+          'id': opt.id,
+          'option_name': opt.optionName,
+          'is_required': opt.isRequired,
+          'product_option_values': values
+              .map(
+                (v) => {
+                  'id': v.id,
+                  'value_name': v.valueName,
+                  'price_adjustment': v.priceAdjustment,
+                },
+              )
+              .toList(),
+        });
+      }
 
       if (mounted) {
         setState(() {
-          _productOptions = List<Map<String, dynamic>>.from(options);
+          _productOptions = formattedOptions;
           if (_productOptions.isNotEmpty) {
             _enableVariants = true;
           }
@@ -92,17 +112,17 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
 
   Future<void> _loadCategories() async {
     try {
-      final response = await supabase
-          .from('categories')
-          .select('id, name')
-          .eq('store_id', widget.storeId)
-          .order('name');
+      final db = Provider.of<AppDatabase>(context, listen: false);
+      final response =
+          await (db.select(db.categories)
+                ..where((t) => t.storeId.equals(widget.storeId))
+                ..orderBy([(t) => drift.OrderingTerm.asc(t.name)]))
+              .get();
       if (mounted) {
         setState(() {
-          _categories = List<Map<String, dynamic>>.from(response);
-          // If editing and category not in list (deleted?), handle gracefully
+          _categories = response;
           if (_selectedCategoryId != null &&
-              !_categories.any((c) => c['id'] == _selectedCategoryId)) {
+              !_categories.any((c) => c.id == _selectedCategoryId)) {
             _selectedCategoryId = null;
           }
         });
@@ -115,6 +135,7 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
   void _addOption() {
     setState(() {
       _productOptions.add({
+        'id': const Uuid().v4(),
         'option_name': '',
         'is_required': false,
         'product_option_values': [],
@@ -133,6 +154,7 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
   void _addValue(int optionIndex) {
     setState(() {
       _productOptions[optionIndex]['product_option_values'].add({
+        'id': const Uuid().v4(),
         'value_name': '',
         'price_adjustment': 0.0,
       });
@@ -149,7 +171,7 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
 
   Future<void> _showAddCategoryDialog() async {
     final controller = TextEditingController();
-    final newCategory = await showDialog<String>(
+    final newCategoryName = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Theme.of(context).cardColor,
@@ -190,19 +212,29 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
       ),
     );
 
-    if (newCategory != null && newCategory.isNotEmpty) {
+    if (newCategoryName != null && newCategoryName.isNotEmpty) {
+      if (!mounted) return;
       setState(() => _isLoading = true);
       try {
-        final res = await supabase
-            .from('categories')
-            .insert({'name': newCategory, 'store_id': widget.storeId})
-            .select()
-            .single();
+        final db = Provider.of<AppDatabase>(context, listen: false);
+        final id = const Uuid().v4();
+        await db
+            .into(db.categories)
+            .insert(
+              CategoriesCompanion.insert(
+                id: id,
+                name: drift.Value(newCategoryName),
+                storeId: drift.Value(widget.storeId),
+                lastUpdated: drift.Value(DateTime.now()),
+              ),
+            );
 
         await _loadCategories();
-        setState(() {
-          _selectedCategoryId = res['id'];
-        });
+        if (mounted) {
+          setState(() {
+            _selectedCategoryId = id;
+          });
+        }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -221,7 +253,7 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
   Future<void> _pickImage() async {
     final XFile? pickedFile = await _picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 800, // Optimize size
+      maxWidth: 800,
       maxHeight: 800,
       imageQuality: 85,
     );
@@ -233,50 +265,18 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
     }
   }
 
-  Future<String?> _uploadImage() async {
+  Future<String?> _saveLocalImage() async {
     if (_imageFile == null) return _currentImageUrl;
 
     try {
-      final fileExt = _imageFile!.name.split('.').last;
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-      final filePath = 'products/$fileName';
+      final fileName =
+          '${DateTime.now().millisecondsSinceEpoch}${p.extension(_imageFile!.path)}';
+      final savedPath = await FileManager().saveFile(_imageFile!, fileName);
 
-      final bytes = await _imageFile!.readAsBytes();
-      await supabase.storage
-          .from('products')
-          .uploadBinary(
-            filePath,
-            bytes,
-            fileOptions: const FileOptions(upsert: true),
-          );
-
-      // If there was a previous image, delete it to keep storage clean
-      if (_currentImageUrl != null) {
-        try {
-          final uri = Uri.parse(_currentImageUrl!);
-          final pathSegments = uri.pathSegments;
-          // Format usually: /storage/v1/object/public/products/products/filename.ext
-          // or similar depending on Supabase version/config.
-          // We need the path inside the bucket.
-          final bucketIndex = pathSegments.indexOf('products');
-          if (bucketIndex != -1 && bucketIndex + 1 < pathSegments.length) {
-            final fullPathInsideBucket = pathSegments
-                .sublist(bucketIndex + 1)
-                .join('/');
-            await supabase.storage.from('products').remove([
-              fullPathInsideBucket,
-            ]);
-          }
-        } catch (e) {
-          debugPrint("Cleanup old image error: $e");
-        }
-      }
-
-      final imageUrl = supabase.storage.from('products').getPublicUrl(filePath);
-      return imageUrl;
+      return savedPath;
     } catch (e) {
-      debugPrint("Upload Error: $e");
-      throw "Gagal upload gambar: $e";
+      debugPrint("Save Image Error: $e");
+      throw "Gagal simpan gambar: $e";
     }
   }
 
@@ -285,103 +285,90 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
 
     setState(() => _isLoading = true);
     try {
-      final imageUrl = await _uploadImage();
+      final db = Provider.of<AppDatabase>(context, listen: false);
+      final imageUrl = await _saveLocalImage();
 
       final name = _nameController.text.trim();
       final sku = _skuController.text.trim();
       final description = _descriptionController.text.trim();
-      final buyPrice = int.tryParse(_buyPriceController.text.trim()) ?? 0;
-      final salePrice = int.tryParse(_salePriceController.text.trim()) ?? 0;
+      final buyPrice = double.tryParse(_buyPriceController.text.trim()) ?? 0.0;
+      final salePrice =
+          double.tryParse(_salePriceController.text.trim()) ?? 0.0;
       final stock = _isStockManaged
           ? (int.tryParse(_stockController.text.trim()) ?? 0)
           : 0;
-      // final maxStock = _isStockManaged && _maxStockController.text.isNotEmpty
-      //     ? int.tryParse(_maxStockController.text.trim())
-      //     : null;
 
-      final data = {
-        'store_id': widget.storeId,
-        'name': name,
-        'sku': sku.isEmpty ? null : sku,
-        'description': description.isEmpty ? null : description,
-        'buy_price': buyPrice,
-        'sale_price': salePrice,
-        'stock_quantity': stock,
-        // 'max_stock': maxStock,
-        'is_stock_managed': _isStockManaged,
-        'category_id': _selectedCategoryId,
-        'image_url': imageUrl,
-      };
+      final productId = widget.product?.id ?? const Uuid().v4();
 
-      final productId;
-      if (widget.product == null) {
-        // ADD NEW
-        final res = await supabase
-            .from('products')
-            .insert(data)
-            .select()
-            .single();
-        productId = res['id'];
-      } else {
-        // UPDATE EXISTING
-        productId = widget.product!['id'];
-        await supabase.from('products').update(data).eq('id', productId);
-      }
+      await db.transaction(() async {
+        final companion = ProductsCompanion(
+          id: drift.Value(productId),
+          storeId: drift.Value(widget.storeId),
+          name: drift.Value(name),
+          sku: drift.Value(sku.isEmpty ? null : sku),
+          description: drift.Value(description.isEmpty ? null : description),
+          basePrice: drift.Value(buyPrice),
+          salePrice: drift.Value(salePrice),
+          stockQuantity: drift.Value(stock),
+          isStockManaged: drift.Value(_isStockManaged),
+          categoryId: drift.Value(_selectedCategoryId),
+          imageUrl: drift.Value(imageUrl),
+          isAvailable: const drift.Value(true),
+          lastUpdated: drift.Value(DateTime.now()),
+        );
 
-      // Sync Variants & Options
-      if (_enableVariants) {
+        await db.into(db.products).insertOnConflictUpdate(companion);
+
         // Delete old options for a clean state
-        await supabase
-            .from('product_options')
-            .delete()
-            .eq('product_id', productId);
+        await (db.delete(
+          db.productOptions,
+        )..where((t) => t.productId.equals(productId))).go();
 
-        for (var opt in _productOptions) {
-          final optName = opt['option_name'].toString().trim();
-          if (optName.isEmpty) continue;
+        if (_enableVariants) {
+          for (var opt in _productOptions) {
+            final optName = opt['option_name'].toString().trim();
+            if (optName.isEmpty) continue;
 
-          // Insert option
-          final optRes = await supabase
-              .from('product_options')
-              .insert({
-                'product_id': productId,
-                'store_id': widget.storeId,
-                'option_name': optName,
-                'is_required': opt['is_required'] ?? false,
-              })
-              .select()
-              .single();
+            final optId = const Uuid().v4();
+            await db
+                .into(db.productOptions)
+                .insert(
+                  ProductOptionsCompanion.insert(
+                    id: optId,
+                    productId: drift.Value(productId),
+                    storeId: drift.Value(widget.storeId),
+                    optionName: drift.Value(optName),
+                    isRequired: drift.Value(
+                      opt['is_required'] == true || opt['is_required'] == 1,
+                    ),
+                    lastUpdated: drift.Value(DateTime.now()),
+                  ),
+                );
 
-          final optId = optRes['id'];
+            final values = List<Map<String, dynamic>>.from(
+              opt['product_option_values'] ?? [],
+            );
 
-          // Bulk insert values
-          final values = List<Map<String, dynamic>>.from(
-            opt['product_option_values'] ?? [],
-          );
-          final List<Map<String, dynamic>> valuesToInsert = [];
+            for (var val in values) {
+              final valName = val['value_name'].toString().trim();
+              if (valName.isEmpty) continue;
 
-          for (var val in values) {
-            final valName = val['value_name'].toString().trim();
-            if (valName.isEmpty) continue;
-
-            valuesToInsert.add({
-              'option_id': optId,
-              'value_name': valName,
-              'price_adjustment': val['price_adjustment'] ?? 0,
-            });
-          }
-
-          if (valuesToInsert.isNotEmpty) {
-            await supabase.from('product_option_values').insert(valuesToInsert);
+              await db
+                  .into(db.productOptionValues)
+                  .insert(
+                    ProductOptionValuesCompanion.insert(
+                      id: const Uuid().v4(),
+                      optionId: drift.Value(optId),
+                      valueName: drift.Value(valName),
+                      priceAdjustment: drift.Value(
+                        val['price_adjustment']?.toDouble() ?? 0.0,
+                      ),
+                    ),
+                  );
+            }
           }
         }
-      } else if (widget.product != null) {
-        // If variants disabled, ensured they are cleared
-        await supabase
-            .from('product_options')
-            .delete()
-            .eq('product_id', productId);
-      }
+      });
 
       if (mounted) Navigator.pop(context, true); // Return true on success
     } catch (e) {
@@ -484,10 +471,9 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
                                   // A simple cross-platform way is `Image.memory` if we read bytes,
                                   // but that's async.
                                   // Let's use `NetworkImage` if path starts with `blob:`, else `FileImage`.
-                                  image: _imageFile!.path.startsWith('blob:')
-                                      ? NetworkImage(_imageFile!.path)
-                                      : FileImage(File(_imageFile!.path))
-                                            as ImageProvider,
+                                  image: FileManager().getImageProvider(
+                                    _imageFile!.path,
+                                  ),
                                   fit: BoxFit.cover,
                                 )
                               : (_currentImageUrl != null
@@ -801,6 +787,7 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
 
   Widget _buildCategoryDropdown(Color fillColor, Color textColor) {
     return DropdownButtonFormField<String>(
+      key: ValueKey(_selectedCategoryId),
       initialValue: _selectedCategoryId,
       isExpanded: true, // Prevent text overflow
       dropdownColor: Theme.of(context).cardColor,
@@ -826,14 +813,49 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
           borderSide: BorderSide.none,
         ),
       ),
-      items: _categories.map((cat) {
-        return DropdownMenuItem<String>(
-          value: cat['id'] as String,
-          child: Text(cat['name'], overflow: TextOverflow.ellipsis),
-        );
-      }).toList(),
-      onChanged: (val) => setState(() => _selectedCategoryId = val),
-      validator: (val) => val == null ? "Kategori wajib dipilih" : null,
+      items: [
+        DropdownMenuItem<String>(
+          value: null,
+          child: Text(
+            "Tanpa Kategori",
+            style: GoogleFonts.inter(fontSize: 14, color: textColor),
+          ),
+        ),
+        ..._categories.map((cat) {
+          return DropdownMenuItem<String>(
+            value: cat.id,
+            child: Text(
+              cat.name ?? '',
+              style: GoogleFonts.inter(fontSize: 14, color: textColor),
+              overflow: TextOverflow.ellipsis,
+            ),
+          );
+        }),
+        DropdownMenuItem<String>(
+          value: "NEW_CATEGORY",
+          child: Row(
+            children: [
+              const Icon(Icons.add, color: Color(0xFFEA5700), size: 18),
+              const SizedBox(width: 8),
+              Text(
+                "Buat Baru",
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFFEA5700),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+      onChanged: (val) {
+        if (val == "NEW_CATEGORY") {
+          _showAddCategoryDialog();
+        } else {
+          setState(() => _selectedCategoryId = val);
+        }
+      },
     );
   }
 

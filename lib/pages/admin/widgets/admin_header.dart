@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import '../../../services/platform/file_manager.dart';
 
 class AdminHeader extends StatelessWidget {
   final String? userName;
@@ -15,6 +16,7 @@ class AdminHeader extends StatelessWidget {
   final VoidCallback onProfileTap;
   final VoidCallback onLowStockTap;
   final VoidCallback onSalesTap;
+  final VoidCallback onSettingsTap;
 
   const AdminHeader({
     super.key,
@@ -29,6 +31,7 @@ class AdminHeader extends StatelessWidget {
     required this.onProfileTap,
     required this.onLowStockTap,
     required this.onSalesTap,
+    required this.onSettingsTap,
   });
 
   @override
@@ -54,7 +57,7 @@ class AdminHeader extends StatelessWidget {
                   radius: 28,
                   backgroundColor: Colors.white,
                   backgroundImage: profileUrl != null
-                      ? NetworkImage(profileUrl!)
+                      ? FileManager().getImageProvider(profileUrl!)
                       : null,
                   child: profileUrl == null
                       ? const Icon(
@@ -90,32 +93,15 @@ class AdminHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.green,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.check_circle, color: Colors.white, size: 16),
-                    SizedBox(width: 4),
-                    Text(
-                      "BUKA",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
+              const SizedBox(width: 10),
+              GestureDetector(
+                onTap: onSettingsTap,
+                child: const Icon(
+                  CupertinoIcons.settings,
+                  color: Colors.white,
+                  size: 24,
                 ),
               ),
-              const SizedBox(width: 10),
-              const Icon(CupertinoIcons.bell, color: Colors.white),
             ],
           ),
           const SizedBox(height: 30),

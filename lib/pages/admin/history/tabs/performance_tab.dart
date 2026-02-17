@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:provider/provider.dart';
+import '../../../../services/app_database.dart';
 import '../../../../services/report_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../widgets/employee_performance_card.dart';
@@ -13,7 +15,7 @@ class PerformanceTab extends StatefulWidget {
 }
 
 class _PerformanceTabState extends State<PerformanceTab> {
-  final _reportService = ReportService();
+  late ReportService _reportService;
   bool _isLoading = true;
   List<Map<String, dynamic>> _performanceData = [];
   List<Map<String, dynamic>> _staffStatus = [];
@@ -42,6 +44,8 @@ class _PerformanceTabState extends State<PerformanceTab> {
   @override
   void initState() {
     super.initState();
+    final db = context.read<AppDatabase>();
+    _reportService = ReportService(db);
     _loadData();
   }
 
@@ -109,7 +113,7 @@ class _PerformanceTabState extends State<PerformanceTab> {
                   side: BorderSide(
                     color: isSelected
                         ? Colors.transparent
-                        : Colors.grey.withOpacity(0.3),
+                        : Colors.grey.withValues(alpha: 0.3),
                   ),
                   showCheckmark: false,
                 ),
@@ -153,10 +157,10 @@ class _PerformanceTabState extends State<PerformanceTab> {
                             (p) => p?['id'] == staff['id'],
                             orElse: () => {
                               'id': staff['id'],
-                              'name': staff['full_name'],
-                              'avatar': staff['avatar_url'],
-                              'total_sales': 0.0,
-                              'transaction_count': 0,
+                              'name': staff['fullName'],
+                              'avatar': staff['avatarUrl'],
+                              'totalSales': 0.0,
+                              'transactionCount': 0,
                             },
                           );
 

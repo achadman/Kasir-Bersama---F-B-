@@ -49,155 +49,163 @@ class PaymentSuccessDialog extends StatelessWidget {
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480), // Modern dialog width
-        child: Padding(
-          padding: const EdgeInsets.all(32), // Increased padding
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Success Icon
-              Container(
-                width: 90,
-                height: 90,
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.check_circle_rounded,
-                  color: Colors.green,
-                  size: 56,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                "Pembayaran Berhasil!",
-                style: GoogleFonts.poppins(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                "Transaksi #$transactionId telah tersimpan.",
-                style: GoogleFonts.inter(fontSize: 15, color: Colors.grey),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 32),
-
-              // Summary
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.black26 : Colors.grey[50],
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: isDark ? Colors.white10 : Colors.grey[200]!,
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(32), // Increased padding
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Success Icon
+                Container(
+                  width: 90,
+                  height: 90,
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.green,
+                    size: 56,
                   ),
                 ),
-                child: Column(
-                  children: [
-                    _row(
-                      "Total Tagihan",
-                      currencyFormat.format(totalAmount),
-                      isBold: true,
-                      fontSize: 16,
+                const SizedBox(height: 24),
+                Text(
+                  "Pembayaran Berhasil!",
+                  style: GoogleFonts.poppins(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Transaksi #$transactionId telah tersimpan.",
+                  style: GoogleFonts.inter(fontSize: 15, color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+
+                // Summary
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.black26 : Colors.grey[50],
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isDark ? Colors.white10 : Colors.grey[200]!,
                     ),
-                    const SizedBox(height: 12),
-                    _row("Tunai", currencyFormat.format(cashReceived)),
-                    const SizedBox(height: 12),
-                    Divider(color: Colors.grey.withValues(alpha: 0.2)),
-                    const SizedBox(height: 12),
-                    _row(
-                      "Kembalian",
-                      currencyFormat.format(change),
-                      isBold: true,
-                      color: Colors.green,
-                      fontSize: 16,
+                  ),
+                  child: Column(
+                    children: [
+                      _row(
+                        "Total Tagihan",
+                        currencyFormat.format(totalAmount),
+                        isBold: true,
+                        fontSize: 16,
+                      ),
+                      const SizedBox(height: 12),
+                      _row("Tunai", currencyFormat.format(cashReceived)),
+                      const SizedBox(height: 12),
+                      Divider(color: Colors.grey.withValues(alpha: 0.2)),
+                      const SizedBox(height: 12),
+                      _row(
+                        "Kembalian",
+                        currencyFormat.format(change),
+                        isBold: true,
+                        color: Colors.green,
+                        fontSize: 16,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 32),
+
+                // Actions
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 50,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _handlePrint(context),
+                          icon: const Icon(Icons.print_rounded, size: 20),
+                          label: const Text("Cetak"),
+                          style: OutlinedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            side: BorderSide(
+                              color: isDark
+                                  ? Colors.white24
+                                  : Colors.grey[300]!,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: SizedBox(
+                        height: 50,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _handleDownload(context),
+                          icon: const Icon(Icons.download_rounded, size: 20),
+                          label: const Text("Unduh"),
+                          style: OutlinedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            side: BorderSide(
+                              color: isDark
+                                  ? Colors.white24
+                                  : Colors.grey[300]!,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 32),
-
-              // Actions
-              Row(
-                children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 50,
-                      child: OutlinedButton.icon(
-                        onPressed: () => _handlePrint(context),
-                        icon: const Icon(Icons.print_rounded, size: 20),
-                        label: const Text("Cetak"),
-                        style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          side: BorderSide(
-                            color: isDark ? Colors.white24 : Colors.grey[300]!,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: SizedBox(
-                      height: 50,
-                      child: OutlinedButton.icon(
-                        onPressed: () => _handleDownload(context),
-                        icon: const Icon(Icons.download_rounded, size: 20),
-                        label: const Text("Unduh"),
-                        style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          side: BorderSide(
-                            color: isDark ? Colors.white24 : Colors.grey[300]!,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    // Close dialog effectively first
-                    Navigator.of(context, rootNavigator: true).pop();
-                    // Then reset state
-                    onNewTransaction();
-                  },
-                  icon: const Icon(
-                    Icons.add_shopping_cart_rounded,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                  label: Text(
-                    "Transaksi Baru",
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      // Close dialog effectively first
+                      Navigator.of(context, rootNavigator: true).pop();
+                      // Then reset state
+                      onNewTransaction();
+                    },
+                    icon: const Icon(
+                      Icons.add_shopping_cart_rounded,
                       color: Colors.white,
+                      size: 24,
                     ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF4D4D),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                    label: Text(
+                      "Transaksi Baru",
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Colors.white,
+                      ),
                     ),
-                    elevation: 0,
-                    shadowColor: const Color(0xFFFF4D4D).withValues(alpha: 0.4),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF4D4D),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 0,
+                      shadowColor: const Color(
+                        0xFFFF4D4D,
+                      ).withValues(alpha: 0.4),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

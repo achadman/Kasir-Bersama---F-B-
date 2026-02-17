@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../../../../services/app_database.dart' hide TransactionItem;
 import '../../../../services/report_service.dart';
 import '../../../../controllers/admin_controller.dart';
 import '../widgets/transaction_item.dart';
@@ -17,7 +18,7 @@ class TransactionsTab extends StatefulWidget {
 }
 
 class _TransactionsTabState extends State<TransactionsTab> {
-  final _reportService = ReportService();
+  late ReportService _reportService;
   bool _isLoading = true;
   List<Map<String, dynamic>> _allTransactions = [];
   List<Map<String, dynamic>> _filteredTransactions = [];
@@ -35,7 +36,7 @@ class _TransactionsTabState extends State<TransactionsTab> {
   double get _totalSalesFiltered {
     double total = 0;
     for (var tx in _filteredTransactions) {
-      total += (tx['total_amount'] as num).toDouble();
+      total += (tx['totalAmount'] ?? 0 as num).toDouble();
     }
     return total;
   }
@@ -43,6 +44,8 @@ class _TransactionsTabState extends State<TransactionsTab> {
   @override
   void initState() {
     super.initState();
+    final db = context.read<AppDatabase>();
+    _reportService = ReportService(db);
     _loadTransactions();
   }
 
@@ -84,7 +87,7 @@ class _TransactionsTabState extends State<TransactionsTab> {
       debugPrint("TransactionsTab: Fetched ${data.length} transactions.");
       if (data.isNotEmpty) {
         debugPrint(
-          "TransactionsTab: First Tx created_at: ${data.first['created_at']}",
+          "TransactionsTab: First Tx createdAt: ${data.first['createdAt']}",
         );
       }
       if (mounted) {
@@ -105,7 +108,7 @@ class _TransactionsTabState extends State<TransactionsTab> {
       _searchQuery = query; // Update search query
       _filteredTransactions = _allTransactions.where((tx) {
         final id = tx['id'].toString().toLowerCase();
-        final name = (tx['profiles']?['full_name'] ?? '')
+        final name = (tx['profiles']?['fullName'] ?? '')
             .toString()
             .toLowerCase();
         return id.contains(query.toLowerCase()) ||
@@ -225,8 +228,8 @@ class _TransactionsTabState extends State<TransactionsTab> {
                           child: Row(
                             children: [
                               const SizedBox(
-                                width: 12,
-                              ), // Align with row padding
+                                width: 52,
+                              ), // Align with TransactionItem index and margin
                               Expanded(
                                 flex: 3,
                                 child: Text("TRANSAKSI", style: _headerStyle),
@@ -251,10 +254,11 @@ class _TransactionsTabState extends State<TransactionsTab> {
                       if (_filteredTransactions.isEmpty)
                         _buildEmptyState()
                       else
-                        ..._filteredTransactions.map(
-                          (tx) => TransactionItem(
-                            transaction: tx,
-                            onTap: () => _openDetail(tx),
+                        ..._filteredTransactions.asMap().entries.map(
+                          (entry) => TransactionItem(
+                            index: entry.key + 1,
+                            transaction: entry.value,
+                            onTap: () => _openDetail(entry.value),
                           ),
                         ),
                       const SizedBox(height: 80),
@@ -284,13 +288,11 @@ class _TransactionsTabState extends State<TransactionsTab> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(
-          0xFFEA5700,
-        ).withOpacity(0.1), // Changed withValues to withOpacity
+        color: const Color(0xFFEA5700).withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: const Color(0xFFEA5700).withOpacity(0.2),
-        ), // Changed withValues to withOpacity
+          color: const Color(0xFFEA5700).withValues(alpha: 0.2),
+        ),
       ),
       child: Row(
         children: [
@@ -305,12 +307,16 @@ class _TransactionsTabState extends State<TransactionsTab> {
                     color: isDark ? Colors.white70 : Colors.black54,
                   ),
                 ),
-                Text(
-                  currencyFormat.format(_totalSalesFiltered),
-                  style: GoogleFonts.poppins(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFFEA5700),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    currencyFormat.format(_totalSalesFiltered),
+                    style: GoogleFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFFEA5700),
+                    ),
                   ),
                 ),
               ],

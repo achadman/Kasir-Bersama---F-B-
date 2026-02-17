@@ -3,6 +3,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../services/shift_service.dart';
+import '../../../services/app_database.dart';
+import 'package:provider/provider.dart';
 
 class ShiftReportPage extends StatefulWidget {
   final String storeId;
@@ -13,7 +15,7 @@ class ShiftReportPage extends StatefulWidget {
 }
 
 class _ShiftReportPageState extends State<ShiftReportPage> {
-  final ShiftService _shiftService = ShiftService();
+  late ShiftService _shiftService;
   bool _isLoading = true;
   List<Map<String, dynamic>> _shifts = [];
   DateTimeRange? _selectedDateRange;
@@ -21,7 +23,11 @@ class _ShiftReportPageState extends State<ShiftReportPage> {
   @override
   void initState() {
     super.initState();
-    _fetchShifts();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final db = context.read<AppDatabase>();
+      _shiftService = ShiftService(db);
+      _fetchShifts();
+    });
   }
 
   Future<void> _fetchShifts() async {

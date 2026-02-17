@@ -1,15 +1,17 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../services/platform/file_manager.dart';
 
 class AdminDrawer extends StatelessWidget {
   final String? userName;
   final String? profileUrl;
   final String? storeName;
-  final String? storeLogo;
   final String? role;
   final Map<String, dynamic>? permissions;
   final Color primaryColor;
+  final int selectedIndex;
+  final VoidCallback onDashboardTap;
   final VoidCallback onProfileTap;
   final VoidCallback onInventoryTap;
   final VoidCallback onCategoryTap;
@@ -18,6 +20,9 @@ class AdminDrawer extends StatelessWidget {
   final VoidCallback onHistoryTap;
   final VoidCallback onAnalyticsTap;
   final VoidCallback onPrinterTap;
+  final VoidCallback onPromotionTap;
+  final VoidCallback onExportImportTap;
+  final VoidCallback onProfitLossTap;
   final VoidCallback onLogoutTap;
 
   const AdminDrawer({
@@ -25,10 +30,11 @@ class AdminDrawer extends StatelessWidget {
     this.userName,
     this.profileUrl,
     this.storeName,
-    this.storeLogo,
     this.role,
     this.permissions,
     required this.primaryColor,
+    required this.selectedIndex,
+    required this.onDashboardTap,
     required this.onProfileTap,
     required this.onInventoryTap,
     required this.onCategoryTap,
@@ -37,6 +43,9 @@ class AdminDrawer extends StatelessWidget {
     required this.onHistoryTap,
     required this.onAnalyticsTap,
     required this.onPrinterTap,
+    required this.onPromotionTap,
+    required this.onExportImportTap,
+    required this.onProfitLossTap,
     required this.onLogoutTap,
   });
 
@@ -64,8 +73,11 @@ class AdminDrawer extends StatelessWidget {
                   context,
                   icon: CupertinoIcons.square_grid_2x2,
                   label: "Dashboard",
-                  onTap: () => Navigator.pop(context),
-                  isActive: true,
+                  onTap: () {
+                    Navigator.pop(context);
+                    onDashboardTap();
+                  },
+                  isActive: selectedIndex == 0,
                 ),
                 _buildSectionTitle("OPERASIONAL"),
                 if (role?.toLowerCase() == 'owner' ||
@@ -79,6 +91,7 @@ class AdminDrawer extends StatelessWidget {
                       Navigator.pop(context);
                       onInventoryTap();
                     },
+                    isActive: selectedIndex == 1,
                   ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
@@ -91,13 +104,8 @@ class AdminDrawer extends StatelessWidget {
                       Navigator.pop(context);
                       onCategoryTap();
                     },
+                    isActive: selectedIndex == 2,
                   ),
-                _buildModernItem(
-                  context,
-                  icon: CupertinoIcons.bag,
-                  label: "Data Pembelian",
-                  onTap: () {}, // Pending implementation
-                ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
                     (permissions?['pos_access'] ?? true))
@@ -109,6 +117,7 @@ class AdminDrawer extends StatelessWidget {
                       Navigator.pop(context);
                       onKasirTap();
                     },
+                    isActive: selectedIndex == 3,
                   ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin')
@@ -120,6 +129,7 @@ class AdminDrawer extends StatelessWidget {
                       Navigator.pop(context);
                       onEmployeeTap();
                     },
+                    isActive: selectedIndex == 5,
                   ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
@@ -132,6 +142,20 @@ class AdminDrawer extends StatelessWidget {
                       Navigator.pop(context);
                       onHistoryTap();
                     },
+                    isActive: selectedIndex == 4,
+                  ),
+                if (role?.toLowerCase() == 'owner' ||
+                    role?.toLowerCase() == 'admin' ||
+                    (permissions?['manage_promotions'] ?? true))
+                  _buildModernItem(
+                    context,
+                    icon: CupertinoIcons.percent,
+                    label: "Promosi & Diskon",
+                    onTap: () {
+                      Navigator.pop(context);
+                      onPromotionTap();
+                    },
+                    isActive: selectedIndex == 9,
                   ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
@@ -144,6 +168,7 @@ class AdminDrawer extends StatelessWidget {
                       Navigator.pop(context);
                       onPrinterTap();
                     },
+                    isActive: selectedIndex == 7,
                   ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
@@ -158,6 +183,29 @@ class AdminDrawer extends StatelessWidget {
                       onAnalyticsTap();
                     },
                     isSpecial: true,
+                    isActive: selectedIndex == 6,
+                  ),
+                  _buildModernItem(
+                    context,
+                    icon: CupertinoIcons.graph_circle,
+                    label: "Laporan Laba Rugi",
+                    onTap: () {
+                      Navigator.pop(context);
+                      onProfitLossTap();
+                    },
+                    isSpecial: true,
+                    isActive: selectedIndex == 11,
+                  ),
+                  _buildModernItem(
+                    context,
+                    icon: CupertinoIcons.cloud_download,
+                    label: "Manajemen Data & Stok",
+                    onTap: () {
+                      Navigator.pop(context);
+                      onExportImportTap();
+                    },
+                    isSpecial: true,
+                    isActive: selectedIndex == 10,
                   ),
                 ],
               ],
@@ -190,7 +238,10 @@ class AdminDrawer extends StatelessWidget {
           Row(
             children: [
               GestureDetector(
-                onTap: onProfileTap,
+                onTap: () {
+                  Navigator.pop(context);
+                  onProfileTap();
+                },
                 child: Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
@@ -206,7 +257,7 @@ class AdminDrawer extends StatelessWidget {
                     radius: 32,
                     backgroundColor: Colors.white,
                     backgroundImage: profileUrl != null
-                        ? NetworkImage(profileUrl!)
+                        ? FileManager().getImageProvider(profileUrl!)
                         : null,
                     child: profileUrl == null
                         ? Icon(Icons.person, size: 36, color: Colors.grey[400])
@@ -256,33 +307,39 @@ class AdminDrawer extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  CupertinoIcons.building_2_fill,
-                  color: Colors.white70,
-                  size: 16,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    storeName ?? "Toko Saya",
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+          GestureDetector(
+            onTap: () {
+              Navigator.pop(context);
+              onProfileTap();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    CupertinoIcons.building_2_fill,
+                    color: Colors.white70,
+                    size: 16,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      storeName ?? "Toko Saya",
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -382,7 +439,10 @@ class AdminDrawer extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           InkWell(
-            onTap: onLogoutTap,
+            onTap: () {
+              Navigator.pop(context);
+              onLogoutTap();
+            },
             borderRadius: BorderRadius.circular(16),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

@@ -1,17 +1,15 @@
 import 'package:flutter/material.dart';
+import '../../../services/platform/file_manager.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import '../../../services/app_database.dart';
 
 class CartSidebar extends StatefulWidget {
   final List<Map<String, dynamic>> cartItems;
+  final Map<String, dynamic>? discountData;
   final Function(String cartId) onRemoveItem;
-  final Function(
-    Map<String, dynamic> product, {
-    List? options,
-    String? notes,
-    double? price,
-  })
+  final Function(Product product, {List? options, String? notes, double? price})
   onAddItem;
   final Function(double cashReceived, String paymentMethod) onCheckout;
   final bool isProcessing;
@@ -19,6 +17,7 @@ class CartSidebar extends StatefulWidget {
   const CartSidebar({
     super.key,
     required this.cartItems,
+    this.discountData,
     required this.onRemoveItem,
     required this.onAddItem,
     required this.onCheckout,
@@ -59,11 +58,15 @@ class _CartSidebarState extends State<CartSidebar> {
     final isDark = theme.brightness == Brightness.dark;
     const primaryColor = Color(0xFFEA5700);
 
-    double total = widget.cartItems.fold(
+    double subTotal = widget.cartItems.fold(
       0,
       (sum, item) =>
           sum + ((item['price'] as double) * (item['quantity'] as int)),
     );
+    double discount = widget.discountData?['total_discount'] ?? 0.0;
+    double total = subTotal - discount;
+    if (total < 0) total = 0;
+
     double change = _cashReceived - total;
 
     return Container(
@@ -73,50 +76,52 @@ class _CartSidebarState extends State<CartSidebar> {
           left: BorderSide(color: isDark ? Colors.white10 : Colors.grey[200]!),
         ),
       ),
-      child: Column(
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  "Invoice",
-                  style: GoogleFonts.poppins(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : const Color(0xFF2D3436),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: primaryColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    "${_getCartTotalCount()} Item",
-                    style: GoogleFonts.inter(
-                      color: primaryColor,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "Invoice",
+                    style: GoogleFonts.poppins(
+                      fontSize: 22,
                       fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                      color: isDark ? Colors.white : const Color(0xFF2D3436),
                     ),
                   ),
-                ),
-              ],
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: primaryColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      "${_getCartTotalCount()} Item",
+                      style: GoogleFonts.inter(
+                        color: primaryColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          // Cart Items List
-          Expanded(
-            child: widget.cartItems.isEmpty
+            // Cart Items List
+            widget.cartItems.isEmpty
                 ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           CupertinoIcons.cart,
@@ -132,12 +137,14 @@ class _CartSidebarState extends State<CartSidebar> {
                     ),
                   )
                 : ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     itemCount: widget.cartItems.length,
                     separatorBuilder: (c, i) => const SizedBox(height: 12),
                     itemBuilder: (context, i) {
                       final item = widget.cartItems[i];
-                      final p = item['product'];
+                      final Product p = item['product'];
                       final qty = item['quantity'] as int;
                       final price = item['price'] as double;
 
@@ -166,9 +173,11 @@ class _CartSidebarState extends State<CartSidebar> {
                                 color: isDark
                                     ? Colors.white12
                                     : Colors.grey[100],
-                                child: p['image_url'] != null
-                                    ? Image.network(
-                                        p['image_url'],
+                                child: p.imageUrl != null
+                                    ? Image(
+                                        image: FileManager().getImageProvider(
+                                          p.imageUrl!,
+                                        ),
                                         fit: BoxFit.cover,
                                       )
                                     : Icon(
@@ -184,7 +193,7 @@ class _CartSidebarState extends State<CartSidebar> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    p['name'],
+                                    p.name ?? "Unknown",
                                     style: GoogleFonts.inter(
                                       fontWeight: FontWeight.w600,
                                       fontSize: 13,
@@ -239,184 +248,205 @@ class _CartSidebarState extends State<CartSidebar> {
                       );
                     },
                   ),
-          ),
 
-          // Payment Summary Section
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(32),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 20,
-                  offset: const Offset(0, -5),
+            // Payment Summary Section
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(32),
                 ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Payment Summary",
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 20,
+                    offset: const Offset(0, -5),
                   ),
-                ),
-                if (_selectedPaymentMethod == "Tunai") ...[
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _cashController,
-                    keyboardType: TextInputType.number,
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Payment Summary",
                     style: GoogleFonts.poppins(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: primaryColor,
                     ),
-                    decoration: InputDecoration(
-                      labelText: "Cash Received",
-                      prefixText: "Rp ",
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: Colors.grey.withValues(alpha: 0.2),
+                  ),
+                  if (_selectedPaymentMethod == "Tunai") ...[
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _cashController,
+                      keyboardType: TextInputType.number,
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: primaryColor,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: "Cash Received",
+                        prefixText: "Rp ",
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: Colors.grey.withValues(alpha: 0.2),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: Colors.grey.withValues(alpha: 0.2),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: primaryColor),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.clear, size: 20),
+                          onPressed: () {
+                            setState(() {
+                              _cashController.clear();
+                              _cashReceived = 0;
+                            });
+                          },
                         ),
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: Colors.grey.withValues(alpha: 0.2),
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: primaryColor),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.clear, size: 20),
-                        onPressed: () {
-                          setState(() {
-                            _cashController.clear();
-                            _cashReceived = 0;
-                          });
-                        },
+                      onChanged: (val) {
+                        setState(() {
+                          _cashReceived =
+                              double.tryParse(
+                                val.replaceAll(RegExp(r'[^0-9]'), ''),
+                              ) ??
+                              0;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _buildQuickCashBtn("Exact", total),
+                          _buildQuickCashBtn("50k", 50000),
+                          _buildQuickCashBtn("100k", 100000),
+                        ],
                       ),
                     ),
-                    onChanged: (val) {
-                      setState(() {
-                        _cashReceived =
-                            double.tryParse(
-                              val.replaceAll(RegExp(r'[^0-9]'), ''),
-                            ) ??
-                            0;
-                      });
-                    },
+                  ],
+                  const SizedBox(height: 20),
+                  _buildSummaryLine("Sub Total", subTotal),
+                  if (discount > 0) ...[
+                    _buildSummaryLine("Diskon", discount, isNegative: true),
+                    if (widget.discountData?['promo_names'] != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          (widget.discountData!['promo_names'] as List).join(
+                            ", ",
+                          ),
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            color: Colors.green,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                  ],
+                  _buildSummaryLine("Tax", 0),
+                  if (_selectedPaymentMethod == "Tunai" && _cashReceived > 0)
+                    _buildSummaryLine("Change", change > 0 ? change : 0),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: DottedLine(),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Total Payment",
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        _currencyFormat.format(total),
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: primaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    "Payment Method",
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey,
+                    ),
                   ),
                   const SizedBox(height: 12),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _buildQuickCashBtn("Exact", total),
-                        _buildQuickCashBtn("50k", 50000),
-                        _buildQuickCashBtn("100k", 100000),
-                      ],
+                  Row(
+                    children: [
+                      _buildPaymentMethodIcon("Tunai", Icons.payments_outlined),
+                      const SizedBox(width: 12),
+                      _buildPaymentMethodIcon("QRIS", Icons.qr_code_scanner),
+                      const SizedBox(width: 12),
+                      _buildPaymentMethodIcon(
+                        "Transfer",
+                        Icons.account_balance_wallet,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed:
+                          (widget.isProcessing ||
+                              widget.cartItems.isEmpty ||
+                              (_selectedPaymentMethod == "Tunai" &&
+                                  _cashReceived < total))
+                          ? null
+                          : () => widget.onCheckout(
+                              _cashReceived,
+                              _selectedPaymentMethod,
+                            ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: widget.isProcessing
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : Text(
+                              "Place An Order Now",
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
                     ),
                   ),
                 ],
-                const SizedBox(height: 20),
-                _buildSummaryLine("Sub Total", total),
-                _buildSummaryLine("Tax", 0),
-                if (_selectedPaymentMethod == "Tunai" && _cashReceived > 0)
-                  _buildSummaryLine("Change", change > 0 ? change : 0),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: DottedLine(),
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "Total Payment",
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    Text(
-                      _currencyFormat.format(total),
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                        color: primaryColor,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  "Payment Method",
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _buildPaymentMethodIcon("Tunai", Icons.payments_outlined),
-                    const SizedBox(width: 12),
-                    _buildPaymentMethodIcon("QRIS", Icons.qr_code_scanner),
-                    const SizedBox(width: 12),
-                    _buildPaymentMethodIcon(
-                      "Transfer",
-                      Icons.account_balance_wallet,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: (widget.isProcessing || widget.cartItems.isEmpty)
-                        ? null
-                        : () => widget.onCheckout(
-                            _cashReceived,
-                            _selectedPaymentMethod,
-                          ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: widget.isProcessing
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : Text(
-                            "Place An Order Now",
-                            style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -440,7 +470,11 @@ class _CartSidebarState extends State<CartSidebar> {
     );
   }
 
-  Widget _buildSummaryLine(String label, double amount) {
+  Widget _buildSummaryLine(
+    String label,
+    double amount, {
+    bool isNegative = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -451,8 +485,12 @@ class _CartSidebarState extends State<CartSidebar> {
             style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 13),
           ),
           Text(
-            _currencyFormat.format(amount),
-            style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14),
+            (isNegative ? "- " : "") + _currencyFormat.format(amount),
+            style: GoogleFonts.inter(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: isNegative ? Colors.green : null,
+            ),
           ),
         ],
       ),

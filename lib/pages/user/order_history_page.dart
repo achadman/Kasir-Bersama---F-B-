@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../services/order_service.dart';
+import '../../services/app_database.dart';
+import 'package:provider/provider.dart';
 
 class OrderHistoryPage extends StatefulWidget {
   const OrderHistoryPage({super.key});
@@ -12,8 +13,7 @@ class OrderHistoryPage extends StatefulWidget {
 }
 
 class _OrderHistoryPageState extends State<OrderHistoryPage> {
-  final _orderService = OrderService();
-  final supabase = Supabase.instance.client;
+  late OrderService _orderService;
   String? _storeId;
   bool _isLoading = true;
 
@@ -26,24 +26,28 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final db = context.read<AppDatabase>();
+      _orderService = OrderService(db);
+      _loadData();
+    });
   }
 
   Future<void> _loadData() async {
-    final user = supabase.auth.currentUser;
-    if (user != null) {
-      final profile = await supabase
-          .from('profiles')
-          .select('store_id')
-          .eq('id', user.id)
-          .maybeSingle();
-
-      if (mounted) {
+    try {
+      final db = context.read<AppDatabase>();
+      final profiles = await (db.select(db.profiles)..limit(1)).get();
+      if (profiles.isNotEmpty) {
         setState(() {
-          _storeId = profile?['store_id'];
+          _storeId = profiles.first.storeId;
           _isLoading = false;
         });
+      } else {
+        setState(() => _isLoading = false);
       }
+    } catch (e) {
+      debugPrint("Error loading profile: $e");
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -125,7 +129,7 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
                         ],
                       ),
                       child: ExpansionTile(
-                        shape: const Border(), // Remove default borders
+                        shape: const Border(),
                         collapsedShape: const Border(),
                         leading: Container(
                           padding: const EdgeInsets.all(8),
@@ -158,9 +162,9 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
                           const Divider(),
                           ...items.map((item) {
                             final productName =
-                                item['products']['name'] ?? 'Product';
+                                item['product_name'] ?? 'Product';
                             final qty = item['quantity'] ?? 0;
-                            final price = item['price_at_time'] ?? 0;
+                            final price = item['unit_price'] ?? 0;
                             return ListTile(
                               dense: true,
                               title: Text(

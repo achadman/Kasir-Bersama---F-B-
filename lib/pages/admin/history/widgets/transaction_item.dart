@@ -6,11 +6,13 @@ import 'package:intl/intl.dart';
 class TransactionItem extends StatelessWidget {
   final Map<String, dynamic> transaction;
   final VoidCallback onTap;
+  final int index;
 
   const TransactionItem({
     super.key,
     required this.transaction,
     required this.onTap,
+    required this.index,
   });
 
   @override
@@ -18,15 +20,29 @@ class TransactionItem extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final total = (transaction['total_amount'] as num).toDouble();
-    final date = DateTime.parse(transaction['created_at']).toLocal();
-    final cashierName = transaction['profiles']?['full_name'] ?? 'System';
+    final total = (transaction['totalAmount'] ?? 0 as num).toDouble();
+    final rawDate = transaction['createdAt'];
+    DateTime date;
+    if (rawDate is DateTime) {
+      date = rawDate.toLocal();
+    } else if (rawDate != null) {
+      final str = rawDate.toString();
+      final asInt = int.tryParse(str);
+      if (asInt != null) {
+        date = DateTime.fromMillisecondsSinceEpoch(asInt).toLocal();
+      } else {
+        date = DateTime.tryParse(str)?.toLocal() ?? DateTime.now();
+      }
+    } else {
+      date = DateTime.now();
+    }
+    final cashierName = transaction['profiles']?['fullName'] ?? 'System';
     final txId = transaction['id'].toString().substring(0, 8).toUpperCase();
 
     final List items = transaction['transaction_items'] ?? [];
     String displayTitle = "#$txId";
     if (items.isNotEmpty) {
-      final firstName = items[0]['products']?['name'] ?? 'Item';
+      final firstName = items[0]['productName'] ?? 'Item';
       if (items.length > 1) {
         displayTitle = "$firstName + ${items.length - 1} item";
       } else {
@@ -47,12 +63,34 @@ class TransactionItem extends StatelessWidget {
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(
-              color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+              color: isDark
+                  ? Colors.white10
+                  : Colors.black.withValues(alpha: 0.05),
             ),
           ),
         ),
         child: Row(
           children: [
+            // Index Number
+            Container(
+              width: 32,
+              height: 32,
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEA5700).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                index.toString(),
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  color: const Color(0xFFEA5700),
+                ),
+              ),
+            ),
+
             // Product Name & ID/Time
             Expanded(
               flex: 3,
@@ -75,7 +113,7 @@ class TransactionItem extends StatelessWidget {
                         "#$txId",
                         style: GoogleFonts.inter(
                           fontSize: 11,
-                          color: Colors.grey.withOpacity(0.7),
+                          color: Colors.grey.withValues(alpha: 0.7),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -83,7 +121,7 @@ class TransactionItem extends StatelessWidget {
                         DateFormat('HH:mm').format(date),
                         style: GoogleFonts.inter(
                           fontSize: 11,
-                          color: Colors.grey.withOpacity(0.7),
+                          color: Colors.grey.withValues(alpha: 0.7),
                         ),
                       ),
                     ],
@@ -95,28 +133,35 @@ class TransactionItem extends StatelessWidget {
             // Cashier
             Expanded(
               flex: 2,
-              child: Text(
-                cashierName,
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: isDark ? Colors.white70 : Colors.grey[700],
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  cashierName,
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: isDark ? Colors.white70 : Colors.grey[700],
+                  ),
+                  maxLines: 1,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
               ),
             ),
 
             // Amount
             Expanded(
               flex: 2,
-              child: Text(
-                currencyFormat.format(total),
-                textAlign: TextAlign.right,
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  color: const Color(0xFFEA5700),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Text(
+                  currencyFormat.format(total),
+                  textAlign: TextAlign.right,
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: const Color(0xFFEA5700),
+                  ),
                 ),
               ),
             ),
@@ -125,7 +170,7 @@ class TransactionItem extends StatelessWidget {
             Icon(
               CupertinoIcons.chevron_right,
               size: 14,
-              color: Colors.grey.withOpacity(0.5),
+              color: Colors.grey.withValues(alpha: 0.5),
             ),
           ],
         ),

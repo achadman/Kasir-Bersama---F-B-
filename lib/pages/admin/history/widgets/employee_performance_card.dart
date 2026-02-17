@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../widgets/floating_card.dart';
+import '../../../../services/platform/file_manager.dart';
 
 class EmployeePerformanceCard extends StatelessWidget {
   final Map<String, dynamic> performance;
@@ -20,8 +21,8 @@ class EmployeePerformanceCard extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     final name = performance['name'] ?? 'Karyawan';
-    final totalSales = (performance['total_sales'] as num).toDouble();
-    final count = performance['transaction_count'] ?? 0;
+    final totalSales = (performance['totalSales'] as num?)?.toDouble() ?? 0.0;
+    final count = performance['transactionCount'] ?? 0;
     final avatar = performance['avatar'];
 
     // Status Logic
@@ -50,7 +51,7 @@ class EmployeePerformanceCard extends StatelessWidget {
                       0xFFEA5700,
                     ).withValues(alpha: 0.1),
                     backgroundImage: avatar != null
-                        ? NetworkImage(avatar)
+                        ? FileManager().getImageProvider(avatar)
                         : null,
                     child: avatar == null
                         ? const Icon(
@@ -216,10 +217,21 @@ class EmployeePerformanceCard extends StatelessWidget {
     }
   }
 
-  String _getClockInTime(String? timestamp) {
+  String _getClockInTime(dynamic timestamp) {
     if (timestamp == null) return "Belum Masuk";
     try {
-      final date = DateTime.parse(timestamp).toLocal();
+      DateTime date;
+      if (timestamp is DateTime) {
+        date = timestamp.toLocal();
+      } else {
+        final str = timestamp.toString();
+        final asInt = int.tryParse(str);
+        if (asInt != null) {
+          date = DateTime.fromMillisecondsSinceEpoch(asInt).toLocal();
+        } else {
+          date = DateTime.tryParse(str)?.toLocal() ?? DateTime.now();
+        }
+      }
       return DateFormat('HH:mm').format(date);
     } catch (e) {
       return "--:--";
