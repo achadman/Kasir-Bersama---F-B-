@@ -1,12 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../services/order_service.dart';
 import '../../services/app_database.dart';
 import 'package:provider/provider.dart';
+import '../../widgets/kasir_drawer.dart';
+import 'widgets/kasir_side_navigation.dart';
+
+import '../../../controllers/admin_controller.dart';
 
 class OrderHistoryPage extends StatefulWidget {
-  const OrderHistoryPage({super.key});
+  final bool showSidebar;
+  final VoidCallback? onMenuPressed;
+  const OrderHistoryPage({
+    super.key,
+    this.showSidebar = true,
+    this.onMenuPressed,
+  });
 
   @override
   State<OrderHistoryPage> createState() => _OrderHistoryPageState();
@@ -34,19 +45,15 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
   }
 
   Future<void> _loadData() async {
-    try {
-      final db = context.read<AppDatabase>();
-      final profiles = await (db.select(db.profiles)..limit(1)).get();
-      if (profiles.isNotEmpty) {
+    final admin = context.read<AdminController>();
+    if (admin.storeId != null) {
+      if (mounted) {
         setState(() {
-          _storeId = profiles.first.storeId;
+          _storeId = admin.storeId;
           _isLoading = false;
         });
-      } else {
-        setState(() => _isLoading = false);
       }
-    } catch (e) {
-      debugPrint("Error loading profile: $e");
+    } else {
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -54,8 +61,9 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+
+    Widget content = Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(
           "Riwayat Pesanan",
@@ -67,8 +75,24 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        iconTheme: IconThemeData(
-          color: isDark ? Colors.white : const Color(0xFF2D3436),
+        leading: Builder(
+          builder: (ctx) {
+            final isWide = MediaQuery.of(ctx).size.width >= 900;
+            if (isWide) return const SizedBox.shrink();
+            return IconButton(
+              icon: Icon(
+                CupertinoIcons.bars,
+                color: isDark ? Colors.white : const Color(0xFF2D3436),
+              ),
+              onPressed: () {
+                if (widget.onMenuPressed != null) {
+                  widget.onMenuPressed!();
+                } else {
+                  Scaffold.of(ctx).openDrawer();
+                }
+              },
+            );
+          },
         ),
       ),
       body: _isLoading
@@ -110,8 +134,23 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
                   itemCount: orders.length,
                   itemBuilder: (context, index) {
                     final order = orders[index];
-                    final items = order['transaction_items'] as List;
-                    final date = DateTime.parse(order['created_at']).toLocal();
+                    final items =
+                        (order['transaction_items'] ??
+                                order['transactionItems'])
+                            as List? ??
+                        [];
+
+                    final rawDate = order['createdAt'] ?? order['created_at'];
+                    DateTime date;
+                    if (rawDate is DateTime) {
+                      date = rawDate.toLocal();
+                    } else if (rawDate != null) {
+                      date =
+                          DateTime.tryParse(rawDate.toString())?.toLocal() ??
+                          DateTime.now();
+                    } else {
+                      date = DateTime.now();
+                    }
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
@@ -143,7 +182,9 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
                           ),
                         ),
                         title: Text(
-                          _currencyFormat.format(order['total_amount']),
+                          _currencyFormat.format(
+                            order['totalAmount'] ?? order['total_amount'] ?? 0,
+                          ),
                           style: GoogleFonts.poppins(
                             fontWeight: FontWeight.bold,
                             color: isDark
@@ -162,9 +203,12 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
                           const Divider(),
                           ...items.map((item) {
                             final productName =
-                                item['product_name'] ?? 'Product';
+                                item['productName'] ??
+                                item['product_name'] ??
+                                'Product';
                             final qty = item['quantity'] ?? 0;
-                            final price = item['unit_price'] ?? 0;
+                            final price =
+                                item['unitPrice'] ?? item['unit_price'] ?? 0;
                             return ListTile(
                               dense: true,
                               title: Text(
@@ -198,6 +242,26 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
                 );
               },
             ),
+    );
+
+    return Scaffold(
+      drawer: widget.showSidebar
+          ? const KasirDrawer(currentRoute: '/order-history')
+          : null,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide = constraints.maxWidth >= 720;
+          if (isWide && widget.showSidebar) {
+            return Row(
+              children: [
+                const KasirSideNavigation(currentRoute: '/order-history'),
+                Expanded(child: content),
+              ],
+            );
+          }
+          return content;
+        },
+      ),
     );
   }
 }

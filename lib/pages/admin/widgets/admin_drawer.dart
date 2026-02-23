@@ -7,6 +7,7 @@ class AdminDrawer extends StatelessWidget {
   final String? userName;
   final String? profileUrl;
   final String? storeName;
+  final String? storeLogo;
   final String? role;
   final Map<String, dynamic>? permissions;
   final Color primaryColor;
@@ -23,6 +24,7 @@ class AdminDrawer extends StatelessWidget {
   final VoidCallback onPromotionTap;
   final VoidCallback onExportImportTap;
   final VoidCallback onProfitLossTap;
+  final VoidCallback onCustomerTap;
   final VoidCallback onLogoutTap;
 
   const AdminDrawer({
@@ -30,6 +32,7 @@ class AdminDrawer extends StatelessWidget {
     this.userName,
     this.profileUrl,
     this.storeName,
+    this.storeLogo,
     this.role,
     this.permissions,
     required this.primaryColor,
@@ -46,6 +49,7 @@ class AdminDrawer extends StatelessWidget {
     required this.onPromotionTap,
     required this.onExportImportTap,
     required this.onProfitLossTap,
+    required this.onCustomerTap,
     required this.onLogoutTap,
   });
 
@@ -144,6 +148,16 @@ class AdminDrawer extends StatelessWidget {
                     },
                     isActive: selectedIndex == 4,
                   ),
+                _buildModernItem(
+                  context,
+                  icon: CupertinoIcons.person_crop_circle_badge_checkmark,
+                  label: "Loyalty & Pelanggan",
+                  onTap: () {
+                    Navigator.pop(context);
+                    onCustomerTap();
+                  },
+                  isActive: selectedIndex == 12,
+                ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
                     (permissions?['manage_promotions'] ?? true))
@@ -256,10 +270,12 @@ class AdminDrawer extends StatelessWidget {
                   child: CircleAvatar(
                     radius: 32,
                     backgroundColor: Colors.white,
-                    backgroundImage: profileUrl != null
-                        ? FileManager().getImageProvider(profileUrl!)
+                    backgroundImage: (profileUrl ?? storeLogo) != null
+                        ? FileManager().getImageProvider(
+                            profileUrl ?? storeLogo!,
+                          )
                         : null,
-                    child: profileUrl == null
+                    child: (profileUrl ?? storeLogo) == null
                         ? Icon(Icons.person, size: 36, color: Colors.grey[400])
                         : null,
                   ),
@@ -320,11 +336,25 @@ class AdminDrawer extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Icon(
-                    CupertinoIcons.building_2_fill,
-                    color: Colors.white70,
-                    size: 16,
-                  ),
+                  if (storeLogo != null)
+                    Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        image: DecorationImage(
+                          image: FileManager().getImageProvider(storeLogo!),
+                          fit: BoxFit.cover,
+                        ),
+                        border: Border.all(color: Colors.white38, width: 1),
+                      ),
+                    )
+                  else
+                    const Icon(
+                      CupertinoIcons.building_2_fill,
+                      color: Colors.white70,
+                      size: 16,
+                    ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(

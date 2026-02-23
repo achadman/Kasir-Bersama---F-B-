@@ -9,6 +9,7 @@ class AdminNavigationRail extends StatelessWidget {
   final String? storeLogo;
   final VoidCallback onLogout;
   final VoidCallback? onProfileTap;
+  final VoidCallback? onCustomerTap;
   final String? userName;
   final String? storeName;
 
@@ -19,6 +20,7 @@ class AdminNavigationRail extends StatelessWidget {
     this.storeLogo,
     required this.onLogout,
     this.onProfileTap,
+    this.onCustomerTap,
     this.userName,
     this.storeName,
   });
@@ -139,6 +141,12 @@ class AdminNavigationRail extends StatelessWidget {
                       isActive: selectedIndex == 11,
                     ),
                     _buildRailItem(
+                      index: 12,
+                      icon: CupertinoIcons.person_crop_circle_fill,
+                      label: "Pelanggan",
+                      isActive: selectedIndex == 12,
+                    ),
+                    _buildRailItem(
                       index: 10,
                       icon: CupertinoIcons.cloud_download_fill,
                       label: "Data & Stok",
@@ -197,50 +205,53 @@ class AdminNavigationRail extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: InkWell(
-        onTap: () => onDestinationSelected(index),
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: isActive ? primaryColor : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: isActive
-                      ? [
-                          BoxShadow(
-                            color: primaryColor.withValues(alpha: 0.4),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ]
-                      : [],
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => onDestinationSelected(index),
+          borderRadius: BorderRadius.circular(12),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: isActive ? primaryColor : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: isActive
+                        ? [
+                            BoxShadow(
+                              color: primaryColor.withValues(alpha: 0.4),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : [],
+                  ),
+                  child: Icon(
+                    icon,
+                    color: isActive ? Colors.white : Colors.grey[400],
+                    size: 22,
+                  ),
                 ),
-                child: Icon(
-                  icon,
-                  color: isActive ? Colors.white : Colors.grey[400],
-                  size: 22,
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  style: GoogleFonts.inter(
+                    fontSize: 9,
+                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                    color: isActive ? primaryColor : Colors.grey[600],
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: GoogleFonts.inter(
-                  fontSize: 9,
-                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-                  color: isActive ? primaryColor : Colors.grey[600],
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

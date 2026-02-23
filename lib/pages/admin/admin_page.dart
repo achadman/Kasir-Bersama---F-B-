@@ -14,9 +14,13 @@ import '../other/printer_settings_page.dart';
 import 'promotion_page.dart';
 import 'data_management_page.dart';
 import 'report/profit_loss_page.dart';
+import 'customer_page.dart';
 
 import 'package:provider/provider.dart';
+import '../../services/app_database.dart';
 import '../../controllers/admin_controller.dart';
+import '../../controllers/analytics_controller.dart';
+import '../../controllers/settings_controller.dart';
 import 'analytics_page.dart';
 import 'widgets/admin_drawer.dart';
 import 'widgets/admin_navigation_rail.dart';
@@ -47,7 +51,14 @@ class _AdminPageState extends State<AdminPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final controller = Provider.of<AdminController>(context, listen: false);
-      controller.loadInitialData();
+      controller.loadInitialData().then((_) {
+        if (mounted && controller.storeId != null) {
+          Provider.of<AnalyticsController>(
+            context,
+            listen: false,
+          ).init(controller.storeId);
+        }
+      });
     });
   }
 
@@ -62,24 +73,22 @@ class _AdminPageState extends State<AdminPage> {
 
     if (isWideScreen) {
       return Scaffold(
-        primary: false,
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        body: Builder(
-          builder: (context) => Row(
-            children: [
-              AdminNavigationRail(
-                selectedIndex: _selectedIndex,
-                onDestinationSelected: (index) {
-                  setState(() => _selectedIndex = index);
-                },
-                storeLogo: controller.storeLogo,
-                onLogout: _handleLogout,
-                onProfileTap: () => setState(() => _selectedIndex = 8),
-              ),
-              const VerticalDivider(thickness: 1, width: 1),
-              Expanded(child: _getSelectedPage(controller)),
-            ],
-          ),
+        body: Row(
+          children: [
+            AdminNavigationRail(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: (index) {
+                setState(() => _selectedIndex = index);
+              },
+              storeLogo: controller.storeLogo,
+              onLogout: _handleLogout,
+              onProfileTap: () => setState(() => _selectedIndex = 8),
+              onCustomerTap: () => setState(() => _selectedIndex = 12),
+            ),
+            const VerticalDivider(thickness: 1, width: 1),
+            Expanded(child: _getSelectedPage(controller)),
+          ],
         ),
       );
     } else {
@@ -92,6 +101,7 @@ class _AdminPageState extends State<AdminPage> {
           userName: controller.userName ?? 'User',
           profileUrl: controller.profileUrl,
           storeName: controller.storeName,
+          storeLogo: controller.storeLogo,
           role: controller.role ?? 'cashier',
           permissions: controller.permissions ?? {},
           primaryColor: _primaryColor,
@@ -108,6 +118,7 @@ class _AdminPageState extends State<AdminPage> {
           onPromotionTap: () => setState(() => _selectedIndex = 9),
           onExportImportTap: () => setState(() => _selectedIndex = 10),
           onProfitLossTap: () => setState(() => _selectedIndex = 11),
+          onCustomerTap: () => setState(() => _selectedIndex = 12),
           onLogoutTap: _handleLogout,
         ),
         body: Builder(builder: (context) => _getSelectedPage(controller)),
@@ -133,7 +144,11 @@ class _AdminPageState extends State<AdminPage> {
       case 3:
         return KasirPage(showSidebar: false, onMenuPressed: onMenuPressed);
       case 4:
-        return HistoryPage(storeId: sId!, onMenuPressed: onMenuPressed);
+        return HistoryPage(
+          storeId: sId!,
+          onMenuPressed: onMenuPressed,
+          showSidebar: false,
+        );
       case 5:
         return EmployeePage(storeId: sId!, onMenuPressed: onMenuPressed);
       case 6:
@@ -142,7 +157,10 @@ class _AdminPageState extends State<AdminPage> {
           onNavigateToIndex: (index) => setState(() => _selectedIndex = index),
         );
       case 7:
-        return const PrinterSettingsPage();
+        return PrinterSettingsPage(
+          showSidebar: false,
+          onMenuPressed: onMenuPressed,
+        );
       case 8:
         return ProfilePage(storeId: sId!, onMenuPressed: onMenuPressed);
       case 9:
@@ -151,6 +169,8 @@ class _AdminPageState extends State<AdminPage> {
         return DataManagementPage(onMenuPressed: onMenuPressed);
       case 11:
         return ProfitLossPage(storeId: sId!, onMenuPressed: onMenuPressed);
+      case 12:
+        return CustomerPage(onMenuPressed: onMenuPressed);
       default:
         return _buildDashboardContent(controller);
     }
@@ -185,44 +205,57 @@ class _AdminPageState extends State<AdminPage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    if (!isWide)
-                      Builder(
-                        builder: (context) => IconButton(
-                          padding: EdgeInsets.zero,
-                          alignment: Alignment.centerLeft,
-                          icon: const Icon(
-                            Icons.menu,
-                            color: Colors.white,
-                            size: 28,
+                Expanded(
+                  child: Row(
+                    children: [
+                      if (!isWide)
+                        Builder(
+                          builder: (context) => IconButton(
+                            padding: EdgeInsets.zero,
+                            alignment: Alignment.centerLeft,
+                            icon: const Icon(
+                              Icons.menu,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                            onPressed: () => Scaffold.of(context).openDrawer(),
                           ),
-                          onPressed: () => Scaffold.of(context).openDrawer(),
+                        ),
+                      if (!isWide) const SizedBox(width: 12),
+                      Flexible(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                SettingsController.instance.getString(
+                                  'dashboard',
+                                ),
+                                style: GoogleFonts.poppins(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '${SettingsController.instance.getString('welcome_back')}, ${controller.storeName ?? "Admin"}',
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                color: Colors.white.withValues(alpha: 0.9),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ],
                         ),
                       ),
-                    if (!isWide) const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Dashboard',
-                          style: GoogleFonts.poppins(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        Text(
-                          'Selamat datang, ${controller.storeName ?? "Admin"}',
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
-                            color: Colors.white.withValues(alpha: 0.9),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Container(
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.2),
@@ -237,7 +270,9 @@ class _AdminPageState extends State<AdminPage> {
                             color: Colors.white,
                           ),
                           label: Text(
-                            'Lihat Analitik',
+                            SettingsController.instance.getString(
+                              'nav_analytics',
+                            ),
                             style: GoogleFonts.inter(
                               fontWeight: FontWeight.w600,
                               fontSize: 13,
@@ -262,34 +297,63 @@ class _AdminPageState extends State<AdminPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildSectionTitle("RINGKASAN HARI INI"),
+                _buildSectionTitle(
+                  SettingsController.instance.getString('today_summary'),
+                ),
                 const SizedBox(height: 16),
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    final isWideThreshold = constraints.maxWidth > 550;
+                    final width = constraints.maxWidth;
+                    int crossAxisCount = 1;
+                    double aspectRatio = 2.5;
+
+                    if (width > 900) {
+                      crossAxisCount = 4;
+                      aspectRatio = 1.3;
+                    } else if (width > 550) {
+                      crossAxisCount = 2;
+                      aspectRatio = 1.2;
+                    } else {
+                      // Small phone or ultra-narrow desktop
+                      crossAxisCount = 1;
+                      aspectRatio = 3.5;
+                    }
+
+                    final isHorizontal = crossAxisCount == 1;
+                    if (isHorizontal) {
+                      aspectRatio = 4.5; // Flatter for horizontal mode
+                    }
+
                     final cards = [
                       StatCard(
-                        title: 'Pendapatan',
+                        title: SettingsController.instance.getString('income'),
                         value: currencyFormat.format(controller.todaySales),
                         icon: Icons.attach_money_rounded,
                         color: const Color(0xFFEA5700),
+                        horizontal: isHorizontal,
                         onTap: () => setState(() => _selectedIndex = 6),
                       ),
                       StatCard(
-                        title: 'Transaksi',
+                        title: SettingsController.instance.getString(
+                          'transactions',
+                        ),
                         value: '${controller.transactionCount}',
                         icon: Icons.receipt_long_rounded,
                         color: const Color(0xFF2196F3),
+                        horizontal: isHorizontal,
                         onTap: () => setState(() => _selectedIndex = 4),
                       ),
                       FutureBuilder<int>(
                         future: _getTotalProducts(controller),
                         builder: (context, snapshot) {
                           return StatCard(
-                            title: 'Produk',
+                            title: SettingsController.instance.getString(
+                              'nav_inventory',
+                            ),
                             value: '${snapshot.data ?? 0}',
                             icon: Icons.inventory_2_rounded,
                             color: const Color(0xFF4CAF50),
+                            horizontal: isHorizontal,
                             onTap: () => setState(() => _selectedIndex = 1),
                           );
                         },
@@ -298,41 +362,49 @@ class _AdminPageState extends State<AdminPage> {
                         future: _getTotalEmployees(controller),
                         builder: (context, snapshot) {
                           return StatCard(
-                            title: 'Karyawan',
+                            title: SettingsController.instance.getString(
+                              'employee_list',
+                            ),
                             value: '${snapshot.data ?? 0}',
                             icon: Icons.people_rounded,
                             color: const Color(0xFF9C27B0),
+                            horizontal: isHorizontal,
                             onTap: () => setState(() => _selectedIndex = 5),
                           );
                         },
                       ),
                     ];
 
-                    if (isWideThreshold) {
-                      return GridView.count(
-                        crossAxisCount: 4,
-                        mainAxisSpacing: 16,
-                        crossAxisSpacing: 16,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        childAspectRatio: 1.3,
-                        children: cards,
-                      );
-                    } else {
-                      return GridView.count(
-                        crossAxisCount: 2,
-                        mainAxisSpacing: 16,
-                        crossAxisSpacing: 16,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        childAspectRatio: 1.1,
-                        children: cards,
+                    if (isHorizontal) {
+                      return Column(
+                        children: cards
+                            .map(
+                              (card) => Padding(
+                                padding: const EdgeInsets.only(bottom: 16),
+                                child: card,
+                              ),
+                            )
+                            .toList(),
                       );
                     }
+
+                    return GridView.count(
+                      crossAxisCount: crossAxisCount,
+                      mainAxisSpacing: 16,
+                      crossAxisSpacing: 16,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      childAspectRatio: aspectRatio,
+                      children: cards,
+                    );
                   },
                 ),
                 const SizedBox(height: 32),
-                _buildSectionTitle("PERFORMA PENDAPATAN (LIFETIME)"),
+                _buildLowStockInsights(controller),
+                const SizedBox(height: 32),
+                _buildSectionTitle(
+                  SettingsController.instance.getString('lifetime_revenue'),
+                ),
                 const SizedBox(height: 16),
                 FutureBuilder<List<Map<String, dynamic>>>(
                   future: _getLifetimeRevenue(controller),
@@ -344,22 +416,26 @@ class _AdminPageState extends State<AdminPage> {
                   },
                 ),
                 const SizedBox(height: 32),
-                _buildSectionTitle("INDIKATOR PERTUMBUHAN"),
+                _buildSectionTitle(
+                  SettingsController.instance.getString('growth_indicators'),
+                ),
                 const SizedBox(height: 16),
-                FutureBuilder<Map<String, double>>(
-                  future: _getGrowthMetrics(controller),
-                  builder: (context, snapshot) {
-                    final metrics =
-                        snapshot.data ?? {'weekly': 0.0, 'monthly': 0.0};
+                Consumer<AnalyticsController>(
+                  builder: (context, analytics, _) {
+                    if (analytics.isLoading) {
+                      return const Center(child: CupertinoActivityIndicator());
+                    }
                     return _buildGrowthIndicators(
-                      metrics['weekly'] ?? 0.0,
-                      metrics['monthly'] ?? 0.0,
+                      analytics.weeklyGrowth,
+                      analytics.monthlyGrowth,
                       Theme.of(context).brightness == Brightness.dark,
                     );
                   },
                 ),
                 const SizedBox(height: 32),
-                _buildSectionTitle("TRANSAKSI TERAKHIR"),
+                _buildSectionTitle(
+                  SettingsController.instance.getString('recent_transactions'),
+                ),
                 const SizedBox(height: 16),
                 FutureBuilder<List<Map<String, dynamic>>>(
                   future: _getRecentTransactions(controller),
@@ -525,7 +601,7 @@ class _AdminPageState extends State<AdminPage> {
           .customSelect(
             '''
         SELECT 
-          strftime('%Y-%m', datetime(created_at/1000, 'unixepoch')) as month,
+          strftime('%Y-%m', datetime(created_at, 'unixepoch')) as month,
           SUM(total_amount) as revenue
         FROM transactions
         WHERE store_id = ? GROUP BY month ORDER BY month ASC
@@ -559,83 +635,14 @@ class _AdminPageState extends State<AdminPage> {
               ];
               label = '${monthNames[month - 1]} ${parts[0].substring(2)}';
             }
-          } catch (e) {}
+          } catch (e) {
+            // If parsing fails, we fall back to the original monthStr label
+          }
         }
         return {'label': label, 'amount': revenue};
       }).toList();
     } catch (e) {
       return [];
-    }
-  }
-
-  Future<Map<String, double>> _getGrowthMetrics(
-    AdminController controller,
-  ) async {
-    try {
-      final db = controller.database;
-      if (db == null) return {'weekly': 0.0, 'monthly': 0.0};
-      final now = DateTime.now();
-      final startOfToday = DateTime(now.year, now.month, now.day);
-      final startOfThisWeek = startOfToday.subtract(
-        Duration(days: now.weekday - 1),
-      );
-      final startOfLastWeek = startOfThisWeek.subtract(const Duration(days: 7));
-      final startOfThisMonth = DateTime(now.year, now.month, 1);
-      final startOfLastMonth = DateTime(now.year, now.month - 1, 1);
-
-      final thisWeekRes = await db
-          .customSelect(
-            'SELECT COALESCE(SUM(total_amount), 0) as total FROM transactions WHERE store_id = ? AND created_at >= ?',
-            variables: [
-              Variable.withString(controller.storeId!),
-              Variable.withInt(startOfThisWeek.millisecondsSinceEpoch),
-            ],
-          )
-          .getSingle();
-      final lastWeekRes = await db
-          .customSelect(
-            'SELECT COALESCE(SUM(total_amount), 0) as total FROM transactions WHERE store_id = ? AND created_at >= ? AND created_at < ?',
-            variables: [
-              Variable.withString(controller.storeId!),
-              Variable.withInt(startOfLastWeek.millisecondsSinceEpoch),
-              Variable.withInt(startOfThisWeek.millisecondsSinceEpoch),
-            ],
-          )
-          .getSingle();
-      final thisWeek = (thisWeekRes.data['total'] as num?)?.toDouble() ?? 0.0;
-      final lastWeek = (lastWeekRes.data['total'] as num?)?.toDouble() ?? 0.0;
-      final weeklyGrowth = lastWeek == 0
-          ? (thisWeek > 0 ? 100.0 : 0.0)
-          : ((thisWeek - lastWeek) / lastWeek * 100);
-
-      final thisMonthRes = await db
-          .customSelect(
-            'SELECT COALESCE(SUM(total_amount), 0) as total FROM transactions WHERE store_id = ? AND created_at >= ?',
-            variables: [
-              Variable.withString(controller.storeId!),
-              Variable.withInt(startOfThisMonth.millisecondsSinceEpoch),
-            ],
-          )
-          .getSingle();
-      final lastMonthRes = await db
-          .customSelect(
-            'SELECT COALESCE(SUM(total_amount), 0) as total FROM transactions WHERE store_id = ? AND created_at >= ? AND created_at < ?',
-            variables: [
-              Variable.withString(controller.storeId!),
-              Variable.withInt(startOfLastMonth.millisecondsSinceEpoch),
-              Variable.withInt(startOfThisMonth.millisecondsSinceEpoch),
-            ],
-          )
-          .getSingle();
-      final thisMonth = (thisMonthRes.data['total'] as num?)?.toDouble() ?? 0.0;
-      final lastMonth = (lastMonthRes.data['total'] as num?)?.toDouble() ?? 0.0;
-      final monthlyGrowth = lastMonth == 0
-          ? (thisMonth > 0 ? 100.0 : 0.0)
-          : ((thisMonth - lastMonth) / lastMonth * 100);
-
-      return {'weekly': weeklyGrowth, 'monthly': monthlyGrowth};
-    } catch (e) {
-      return {'weekly': 0.0, 'monthly': 0.0};
     }
   }
 
@@ -778,9 +785,17 @@ class _AdminPageState extends State<AdminPage> {
   Widget _buildGrowthIndicators(double weekly, double monthly, bool isDark) {
     return Column(
       children: [
-        _buildGrowthMiniCard("Trend Mingguan", weekly, isDark),
+        _buildGrowthMiniCard(
+          SettingsController.instance.getString('weekly_trend'),
+          weekly,
+          isDark,
+        ),
         const SizedBox(height: 12),
-        _buildGrowthMiniCard("Trend Bulanan", monthly, isDark),
+        _buildGrowthMiniCard(
+          SettingsController.instance.getString('monthly_trend'),
+          monthly,
+          isDark,
+        ),
       ],
     );
   }
@@ -820,6 +835,116 @@ class _AdminPageState extends State<AdminPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Future<List<Product>> _getLowStockProducts(AdminController controller) async {
+    final db = context.read<AppDatabase>();
+    return (db.select(db.products)..where(
+          (t) =>
+              t.storeId.equals(controller.storeId!) &
+              t.isStockManaged.equals(true) &
+              t.stockQuantity.isSmallerThanValue(5) &
+              t.isDeleted.equals(false),
+        ))
+        .get();
+  }
+
+  Widget _buildLowStockInsights(AdminController controller) {
+    return FutureBuilder<List<Product>>(
+      future: _getLowStockProducts(controller),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final lowStockItems = snapshot.data!;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _buildSectionTitle("INSIGHT STOK RENDAH"),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    "${lowStockItems.length}",
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            PinterestCard(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: lowStockItems.take(3).map((p) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.red.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.warning_amber_rounded,
+                            color: Colors.red,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                p.name ?? "Produk",
+                                style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              Text(
+                                "Tersisa ${p.stockQuantity} item",
+                                style: GoogleFonts.inter(
+                                  color: Colors.red,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => setState(() => _selectedIndex = 1),
+                          child: const Text("Update"),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

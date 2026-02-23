@@ -59,7 +59,9 @@ class _LoginPageState extends State<LoginPage> {
 
       if (mounted) {
         final adminCtrl = Provider.of<AdminController>(context, listen: false);
-        await adminCtrl.loadInitialData(); // Load store and profile info
+        await adminCtrl.loadInitialData(
+          userId: user.id,
+        ); // Load specific profile info
         if (!mounted) return;
 
         String role = user.role;

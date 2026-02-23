@@ -41,6 +41,10 @@ dependencies:
   ffi: ^2.1.0
   archive: ^3.6.1
   restart_app: ^1.3.2
+  window_manager: ^0.4.3
+  google_sign_in: ^6.1.6
+  googleapis: ^11.4.0
+  extension_google_sign_in_as_googleapis_auth: ^2.0.11
 
 dev_dependencies:
   flutter_test:
@@ -54,6 +58,8 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/logo/logoSteakAsri.png"
+  windows:
+    generate: true
 
 flutter:
   uses-material-design: true

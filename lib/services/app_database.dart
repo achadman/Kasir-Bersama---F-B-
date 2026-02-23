@@ -103,6 +103,19 @@ class ProductOptionValues extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+class Customers extends Table {
+  TextColumn get id => text()();
+  TextColumn get storeId => text().nullable()();
+  TextColumn get name => text().nullable()();
+  TextColumn get phoneNumber => text().nullable()();
+  TextColumn get email => text().nullable()();
+  IntColumn get points => integer().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class Transactions extends Table {
   TextColumn get id => text()();
   RealColumn get totalAmount => real().nullable()();
@@ -116,6 +129,7 @@ class Transactions extends Table {
   TextColumn get source =>
       text().withDefault(const Constant('pos_offline'))(); // Added
   TextColumn get customerName => text().nullable()(); // Added
+  TextColumn get customerId => text().nullable()(); // Added for loyalty link
   TextColumn get tableNumber => text().nullable()(); // Added
   TextColumn get notes => text().nullable()(); // Added
   DateTimeColumn get createdAt => dateTime().nullable()();
@@ -186,6 +200,18 @@ class PromotionItems extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+class Expenses extends Table {
+  TextColumn get id => text()();
+  TextColumn get storeId => text().nullable()();
+  TextColumn get category => text()(); // Listrik, Sewa, Gaji, Makan, Lainnya
+  RealColumn get amount => real().nullable()();
+  DateTimeColumn get date => dateTime().nullable()();
+  TextColumn get notes => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 // --- DATABASE CLASS ---
 
 @DriftDatabase(
@@ -201,13 +227,15 @@ class PromotionItems extends Table {
     AttendanceLogs,
     Promotions,
     PromotionItems,
+    Expenses,
+    Customers,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -218,9 +246,17 @@ class AppDatabase extends _$AppDatabase {
       if (from < 2) {
         await m.createTable(promotions);
         await m.createTable(promotionItems);
-      } else if (from < 3) {
+      }
+      if (from < 3) {
         // Only add column if table was already created in version 2
         await m.addColumn(promotions, promotions.discountType);
+      }
+      if (from < 4) {
+        await m.createTable(expenses);
+      }
+      if (from < 5) {
+        await m.createTable(customers);
+        await m.addColumn(transactions, transactions.customerId);
       }
     },
   );

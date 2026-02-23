@@ -1,9 +1,7 @@
 import '../app_database.dart'; // Adjusted path
 
 class BackupService {
-  final AppDatabase _db;
-
-  BackupService(this._db);
+  BackupService(AppDatabase _);
 
   /// Creates a full backup (DB + Images) as a ZIP file.
   Future<String?> createFullBackup() async {

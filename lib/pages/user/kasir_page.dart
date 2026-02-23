@@ -11,21 +11,34 @@ import 'package:provider/provider.dart';
 import '../../controllers/admin_controller.dart';
 import 'widgets/product_option_modal.dart';
 import 'widgets/payment_success_dialog.dart';
+import '../../controllers/settings_controller.dart';
 import '../../widgets/big_search_bar.dart';
 import 'widgets/category_icon_card.dart';
 import 'widgets/kasir_side_navigation.dart';
 import '../../services/app_database.dart';
+import '../attendance/attendance_page.dart';
+import '../other/printer_settings_page.dart';
+import '../admin/history/history_page.dart';
 
 class KasirPage extends StatefulWidget {
   final bool showSidebar;
   final VoidCallback? onMenuPressed;
-  const KasirPage({super.key, this.showSidebar = true, this.onMenuPressed});
+  final int initialIndex;
+
+  const KasirPage({
+    super.key,
+    this.showSidebar = true,
+    this.onMenuPressed,
+    this.initialIndex = 0,
+  });
 
   @override
   State<KasirPage> createState() => _KasirPageState();
 }
 
 class _KasirPageState extends State<KasirPage> {
+  int _selectedIndex = 0;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   late OrderService _orderService;
   final _receiptService = ReceiptService();
   final _currencyFormat = NumberFormat.currency(
@@ -45,6 +58,7 @@ class _KasirPageState extends State<KasirPage> {
   final Color _primaryColor = const Color(0xFFFF4D4D);
   String? _storeName;
   String? _storeLogoUrl;
+  Customer? _selectedCustomer;
 
   // Payment Logic
   double _cashReceived = 0;
@@ -77,6 +91,7 @@ class _KasirPageState extends State<KasirPage> {
   @override
   void initState() {
     super.initState();
+    _selectedIndex = widget.initialIndex;
     // Use post frame callback to safely access context providers
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final db = context.read<AppDatabase>();
@@ -143,6 +158,25 @@ class _KasirPageState extends State<KasirPage> {
     String? notes,
     double? price,
   }) async {
+    // 0. Stock check before even showing modal
+    final totalInCart = _cartItems
+        .where((item) => (item['product'] as Product).id == product.id)
+        .fold<int>(0, (sum, item) => sum + (item['quantity'] as int));
+
+    if (product.isStockManaged && totalInCart >= (product.stockQuantity ?? 0)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "Stok '${product.name}' ${SettingsController.instance.getString('stock_max_reached')}",
+            ),
+            backgroundColor: Colors.orange[800],
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
     // If options/notes are already provided (e.g. from re-adding), bypass modal
     if (options != null || notes != null || price != null) {
       _addToCart(product, options: options, notes: notes, price: price);
@@ -186,6 +220,31 @@ class _KasirPageState extends State<KasirPage> {
     String? notes,
     double? price,
   }) {
+    // 1. Calculate total in cart for THIS product ID
+    final totalInCartForThisProduct = _cartItems
+        .where((item) => (item['product'] as Product).id == product.id)
+        .fold<int>(0, (sum, item) => sum + (item['quantity'] as int));
+
+    // 2. Stock Check
+    if (product.isStockManaged) {
+      final stockAvailable = product.stockQuantity ?? 0;
+      if (totalInCartForThisProduct + 1 > stockAvailable) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                "Stok '${product.name}' ${SettingsController.instance.getString('stock_insufficient')} (Stok: $stockAvailable)",
+              ),
+              backgroundColor: Colors.orange[800],
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+        return; // Stop here
+      }
+    }
+
     setState(() {
       // Check if exact same item (product + options + notes) already in cart
       final existingIndex = _cartItems.indexWhere((item) {
@@ -287,6 +346,7 @@ class _KasirPageState extends State<KasirPage> {
         change: _cashReceived - finalTotal,
         paymentMethod: _selectedPaymentMethod,
         items: items,
+        customerId: _selectedCustomer?.id,
       );
 
       // 3. Generate Receipt Data
@@ -335,6 +395,7 @@ class _KasirPageState extends State<KasirPage> {
             'promo_count': 0,
             'promo_names': [],
           };
+          _selectedCustomer = null;
         });
 
         Navigator.of(context).maybePop(); // Close cart sheet
@@ -421,393 +482,362 @@ class _KasirPageState extends State<KasirPage> {
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
+      key: _scaffoldKey,
       drawer: widget.showSidebar
-          ? const KasirDrawer(currentRoute: '/kasir')
+          ? KasirDrawer(
+              currentRoute: _getCurrentRoute(),
+              onIndexSelected: (index) =>
+                  setState(() => _selectedIndex = index),
+            )
           : null,
-      body: NestedScrollView(
-        headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          SliverAppBar(
-            toolbarHeight: 74, // Increased to fit BigSearchBar
-            expandedHeight: 74,
-            floating: true,
-            pinned: true,
-            primary: true,
-            backgroundColor: isDark ? const Color(0xFF1A1C1E) : Colors.white,
-            elevation: 0,
-            leading: Builder(
-              builder: (ctx) {
-                final isWide = MediaQuery.of(ctx).size.width >= 720;
-                if (isWide) return const SizedBox.shrink();
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide =
+              constraints.maxWidth >= 900; // Increased breakpoint for shell
+          final content = _getSelectedPage(isDark);
+
+          if (isWide && widget.showSidebar) {
+            return Row(
+              children: [
+                KasirSideNavigation(
+                  currentRoute: _getCurrentRoute(),
+                  onIndexSelected: (index) =>
+                      setState(() => _selectedIndex = index),
+                ),
+                Expanded(child: content),
+              ],
+            );
+          }
+          return content;
+        },
+      ),
+    );
+  }
+
+  String _getCurrentRoute() {
+    switch (_selectedIndex) {
+      case 0:
+        return '/kasir';
+      case 1:
+        return '/order-history';
+      case 2:
+        return '/attendance';
+      case 3:
+        return '/printer-settings';
+      default:
+        return '/kasir';
+    }
+  }
+
+  Widget _getSelectedPage(bool isDark) {
+    void onMenuPressed() => _scaffoldKey.currentState?.openDrawer();
+
+    switch (_selectedIndex) {
+      case 0:
+        return _buildMainPosContent(isDark);
+      case 1:
+        return HistoryPage(onMenuPressed: onMenuPressed, showSidebar: false);
+      case 2:
+        return AttendancePage(onMenuPressed: onMenuPressed, showSidebar: false);
+      case 3:
+        return PrinterSettingsPage(
+          showSidebar: false,
+          onMenuPressed: onMenuPressed,
+        );
+      default:
+        return _buildMainPosContent(isDark);
+    }
+  }
+
+  Widget _buildMainPosContent(bool isDark) {
+    return NestedScrollView(
+      key: const PageStorageKey('pos_main_content'),
+      headerSliverBuilder: (context, innerBoxIsScrolled) => [
+        SliverAppBar(
+          toolbarHeight: 74, // Increased to fit BigSearchBar
+          expandedHeight: 74,
+          floating: true,
+          pinned: true,
+          primary: true,
+          backgroundColor: isDark ? const Color(0xFF1A1C1E) : Colors.white,
+          elevation: 0,
+          leading: Builder(
+            builder: (ctx) {
+              final isWide = MediaQuery.of(ctx).size.width >= 720;
+              if (isWide) return const SizedBox.shrink();
+              return IconButton(
+                icon: Icon(
+                  CupertinoIcons.bars,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+                onPressed: () {
+                  if (widget.onMenuPressed != null) {
+                    widget.onMenuPressed!();
+                  } else {
+                    // Fallback for standalone usage
+                    Scaffold.of(ctx).openDrawer();
+                  }
+                },
+              );
+            },
+          ),
+          title: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: BigSearchBar(
+              controller: _searchController,
+              hintText: "Cari menu atau Scan SKU...",
+              onChanged: (val) =>
+                  setState(() => _searchQuery = val.toLowerCase()),
+              onSubmitted: (val) => _searchAndAddBySku(val),
+              onClear: () {
+                setState(() {
+                  _searchController.clear();
+                  _searchQuery = "";
+                });
+              },
+            ),
+          ),
+          actions: [
+            // Admin Dashboard Button (only for admin)
+            Consumer<AdminController>(
+              builder: (context, adminCtrl, _) {
+                final isAdmin = adminCtrl.userProfile?['role'] == 'admin';
+                if (!isAdmin) return const SizedBox.shrink();
                 return IconButton(
                   icon: Icon(
-                    CupertinoIcons.bars,
+                    CupertinoIcons.square_grid_2x2,
                     color: isDark ? Colors.white : Colors.black87,
                   ),
                   onPressed: () {
-                    if (widget.onMenuPressed != null) {
-                      widget.onMenuPressed!();
-                    } else {
-                      // Fallback for standalone usage
-                      Scaffold.of(ctx).openDrawer();
-                    }
+                    Navigator.pushReplacementNamed(context, '/admin');
                   },
+                  tooltip: "Dashboard Admin",
                 );
               },
             ),
-            title: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: BigSearchBar(
-                controller: _searchController,
-                hintText: "Cari menu atau Scan SKU...",
-                onChanged: (val) =>
-                    setState(() => _searchQuery = val.toLowerCase()),
-                onSubmitted: (val) => _searchAndAddBySku(val),
-                onClear: () {
-                  setState(() {
-                    _searchController.clear();
-                    _searchQuery = "";
-                  });
-                },
+            IconButton(
+              icon: Stack(
+                children: [
+                  Icon(
+                    CupertinoIcons.cart,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                  if (_getCartTotalCount() > 0)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 8,
+                          minHeight: 8,
+                        ),
+                      ),
+                    ),
+                ],
               ),
+              onPressed: _getCartTotalCount() > 0 ? _showCartSheet : null,
             ),
-            actions: [
-              // Admin Dashboard Button (only for admin)
-              Consumer<AdminController>(
-                builder: (context, adminCtrl, _) {
-                  final isAdmin = adminCtrl.userProfile?['role'] == 'admin';
-                  if (!isAdmin) return const SizedBox.shrink();
-                  return IconButton(
-                    icon: Icon(
-                      CupertinoIcons.square_grid_2x2,
-                      color: isDark ? Colors.white : Colors.black87,
-                    ),
-                    onPressed: () {
-                      Navigator.pushReplacementNamed(context, '/admin');
-                    },
-                    tooltip: "Dashboard Admin",
+            const SizedBox(width: 8),
+          ],
+        ),
+      ],
+      body: _storeId == null
+          ? const Center(child: CircularProgressIndicator())
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth >= 720;
+
+                if (isWide) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Main Content
+                      Expanded(flex: 7, child: _buildPosListing(isDark)),
+                      // Right Side (Invoice Sidebar)
+                      Expanded(flex: 3, child: _buildCartSidebar()),
+                    ],
                   );
-                },
-              ),
-              IconButton(
-                icon: Stack(
+                }
+
+                // Mobile Layout (Stack with fab-like cart button)
+                return Stack(
                   children: [
-                    Icon(
-                      CupertinoIcons.cart,
-                      color: isDark ? Colors.white : Colors.black87,
-                    ),
-                    if (_getCartTotalCount() > 0)
+                    _buildPosListing(isDark),
+                    if (_cartItems.isNotEmpty)
                       Positioned(
-                        right: 0,
-                        top: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                          constraints: const BoxConstraints(
-                            minWidth: 8,
-                            minHeight: 8,
-                          ),
+                        bottom: 30,
+                        left: 20,
+                        right: 20,
+                        child: GestureDetector(
+                          onTap: _showCartSheet,
+                          child: _buildMobileCartButton(),
                         ),
                       ),
                   ],
-                ),
-                onPressed: _getCartTotalCount() > 0 ? _showCartSheet : null,
-              ),
-              const SizedBox(width: 8),
-            ],
+                );
+              },
+            ),
+    );
+  }
+
+  Widget _buildPosListing(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Explore Categories
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+          child: Text(
+            "Explore Categories",
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : const Color(0xFF2D3436),
+            ),
           ),
-        ],
-        body: _storeId == null
-            ? const Center(child: CircularProgressIndicator())
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWideScreen = constraints.maxWidth >= 720;
-
-                  if (isWideScreen && widget.showSidebar) {
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Persistent Side Navigation
-                        const KasirSideNavigation(currentRoute: '/kasir'),
-
-                        // Main Content
-                        Expanded(
-                          flex: 7,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              /* Redundant Header Removed */
-
-                              // Explore Categories
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  24,
-                                  20,
-                                  24,
-                                  12,
-                                ),
-                                child: Text(
-                                  "Explore Categories",
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: isDark
-                                        ? Colors.white
-                                        : const Color(0xFF2D3436),
-                                  ),
-                                ),
-                              ),
-                              SizedBox(
-                                height: 100,
-                                child: ListView.builder(
-                                  scrollDirection: Axis.horizontal,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 24,
-                                  ),
-                                  itemCount: _categories.length,
-                                  itemBuilder: (context, index) {
-                                    final cat = _categories[index];
-                                    final isSelected = _selectedCategory == cat;
-                                    return CategoryIconCard(
-                                      label: cat,
-                                      isSelected: isSelected,
-                                      onTap: () {
-                                        setState(
-                                          () => _selectedCategory = isSelected
-                                              ? "Semua"
-                                              : cat,
-                                        );
-                                      },
-                                    );
-                                  },
-                                ),
-                              ),
-
-                              // Product Filter Tabs (Popular/Recent)
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  24,
-                                  24,
-                                  24,
-                                  8,
-                                ),
-                                child: Row(
-                                  children: [
-                                    _buildFilterTab(
-                                      "Popular",
-                                      _selectedFilter == "Popular",
-                                    ),
-                                    const SizedBox(width: 24),
-                                    _buildFilterTab(
-                                      "Recent",
-                                      _selectedFilter == "Recent",
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                              Expanded(
-                                child: ProductGrid(
-                                  storeId: _storeId!,
-                                  searchQuery: _searchQuery,
-                                  categoryFilter: _selectedCategory == "Semua"
-                                      ? "Semua"
-                                      : _categoryMap[_selectedCategory],
-                                  filterType:
-                                      _selectedFilter, // Need to implement this in ProductGrid
-                                  onItemTap: (Product product) {
-                                    _handleProductSelection(product);
-                                    setState(() {});
-                                  },
-                                  actionBuilder: (context, Product p) =>
-                                      _buildActionIcon(p),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Right Side (Invoice Sidebar - Smoother)
-                        Expanded(
-                          flex: 3,
-                          child: CartSidebar(
-                            cartItems: _cartItems,
-                            isProcessing: _isProcessing,
-                            discountData: _discountData,
-                            onRemoveItem: (cartId) {
-                              _removeFromCart(cartId);
-                              setState(() {});
-                            },
-                            onAddItem:
-                                (Product product, {options, notes, price}) {
-                                  _handleProductSelection(
-                                    product,
-                                    options: options,
-                                    notes: notes,
-                                    price: price,
-                                  );
-                                  setState(() {});
-                                },
-                            onCheckout: (cash, method) {
-                              setState(() {
-                                _cashReceived = cash;
-                                _selectedPaymentMethod = method;
-                              });
-                              _processCheckout();
-                            },
-                          ),
-                        ),
-                      ],
-                    );
-                  }
-
-                  // Mobile Layout
-                  return Stack(
-                    children: [
-                      Column(
-                        children: [
-                          // Categories
-                          SizedBox(
-                            height: 60,
-                            child: ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
-                              itemCount: _categories.length,
-                              itemBuilder: (context, index) {
-                                final cat = _categories[index];
-                                final isSelected = _selectedCategory == cat;
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                  ),
-                                  child: ChoiceChip(
-                                    label: Text(cat),
-                                    selected: isSelected,
-                                    onSelected: (selected) {
-                                      setState(() {
-                                        _selectedCategory = selected
-                                            ? cat
-                                            : "Semua";
-                                      });
-                                    },
-                                    selectedColor: _primaryColor,
-                                    labelStyle: GoogleFonts.inter(
-                                      color: isSelected
-                                          ? Colors.white
-                                          : (isDark
-                                                ? Colors.white70
-                                                : Colors.black),
-                                      fontWeight: isSelected
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                    ),
-                                    backgroundColor: isDark
-                                        ? Colors.grey[800]
-                                        : Colors.grey[100],
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(20),
-                                      side: BorderSide.none,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                          Expanded(
-                            child: ProductGrid(
-                              storeId: _storeId!,
-                              searchQuery: _searchQuery,
-                              categoryFilter: _selectedCategory == "Semua"
-                                  ? "Semua"
-                                  : _categoryMap[_selectedCategory],
-                              onItemTap: (Product product) {
-                                _handleProductSelection(product);
-                                setState(() {});
-                              },
-                              actionBuilder: (context, Product p) =>
-                                  _buildActionIcon(p),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (_cartItems.isNotEmpty)
-                        Positioned(
-                          bottom: 30,
-                          left: 20,
-                          right: 20,
-                          child: GestureDetector(
-                            onTap: _showCartSheet,
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: _primaryColor,
-                                borderRadius: BorderRadius.circular(20),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: _primaryColor.withValues(alpha: 0.4),
-                                    blurRadius: 20,
-                                    offset: const Offset(0, 8),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.2,
-                                      ),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Text(
-                                      "${_getCartTotalCount()}",
-                                      style: GoogleFonts.inter(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        "Total",
-                                        style: GoogleFonts.inter(
-                                          color: Colors.white70,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                      Text(
-                                        _currencyFormat.format(_getCartTotal()),
-                                        style: GoogleFonts.poppins(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const Spacer(),
-                                  const Icon(
-                                    Icons.shopping_bag_outlined,
-                                    color: Colors.white,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
+        ),
+        SizedBox(
+          height: 100,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            itemCount: _categories.length,
+            itemBuilder: (context, index) {
+              final cat = _categories[index];
+              final isSelected = _selectedCategory == cat;
+              return CategoryIconCard(
+                label: cat,
+                isSelected: isSelected,
+                onTap: () {
+                  setState(
+                    () => _selectedCategory = isSelected ? "Semua" : cat,
                   );
                 },
+              );
+            },
+          ),
+        ),
+
+        // Product Filter Tabs
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+          child: Row(
+            children: [
+              _buildFilterTab("Popular", _selectedFilter == "Popular"),
+              const SizedBox(width: 24),
+              _buildFilterTab("Recent", _selectedFilter == "Recent"),
+            ],
+          ),
+        ),
+
+        Expanded(
+          child: ProductGrid(
+            storeId: _storeId!,
+            searchQuery: _searchQuery,
+            categoryFilter: _selectedCategory == "Semua"
+                ? "Semua"
+                : _categoryMap[_selectedCategory],
+            filterType: _selectedFilter,
+            onItemTap: (Product product) {
+              _handleProductSelection(product);
+              setState(() {});
+            },
+            actionBuilder: (context, Product p) => _buildActionIcon(p),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCartSidebar() {
+    return CartSidebar(
+      cartItems: _cartItems,
+      isProcessing: _isProcessing,
+      discountData: _discountData,
+      onRemoveItem: (cartId) {
+        _removeFromCart(cartId);
+        setState(() {});
+      },
+      onAddItem: (Product product, {options, notes, price}) {
+        _handleProductSelection(
+          product,
+          options: options,
+          notes: notes,
+          price: price,
+        );
+        setState(() {});
+      },
+      onCheckout: (cash, method) {
+        setState(() {
+          _cashReceived = cash;
+          _selectedPaymentMethod = method;
+        });
+        _processCheckout();
+      },
+      selectedCustomer: _selectedCustomer,
+      onCustomerChanged: (customer) {
+        setState(() => _selectedCustomer = customer);
+      },
+    );
+  }
+
+  Widget _buildMobileCartButton() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _primaryColor,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: _primaryColor.withValues(alpha: 0.4),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              "${_getCartTotalCount()}",
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
               ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                "Total",
+                style: GoogleFonts.inter(color: Colors.white70, fontSize: 12),
+              ),
+              Text(
+                _currencyFormat.format(_getCartTotal()),
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          const Icon(Icons.shopping_bag_outlined, color: Colors.white),
+        ],
       ),
     );
   }
@@ -859,6 +889,8 @@ class _KasirPageState extends State<KasirPage> {
       (sum, item) => sum + (item['quantity'] as int),
     );
 
+    final bool isLimitReached = isStockManaged && qty >= stockQty;
+
     if (isOutOfStock) {
       return Container(
         width: 32,
@@ -871,34 +903,44 @@ class _KasirPageState extends State<KasirPage> {
       );
     }
 
-    return qty == 0
-        ? Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: _primaryColor,
-              shape: BoxShape.circle,
+    if (qty == 0) {
+      return Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(color: _primaryColor, shape: BoxShape.circle),
+        child: const Icon(Icons.add_rounded, color: Colors.white, size: 20),
+      );
+    }
+
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: isLimitReached ? Colors.orange[800] : _primaryColor,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isLimitReached) ...[
+            const Icon(
+              Icons.warning_amber_rounded,
+              color: Colors.white,
+              size: 12,
             ),
-            child: const Icon(Icons.add_rounded, color: Colors.white, size: 20),
-          )
-        : Container(
-            height: 32,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: _primaryColor,
-              borderRadius: BorderRadius.circular(16),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            qty.toString(),
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
             ),
-            child: Center(
-              child: Text(
-                qty.toString(),
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          );
+          ),
+        ],
+      ),
+    );
   }
 
   void _showCartSheet() {
@@ -940,6 +982,11 @@ class _KasirPageState extends State<KasirPage> {
                   });
                   Navigator.pop(context);
                   _processCheckout();
+                },
+                selectedCustomer: _selectedCustomer,
+                onCustomerChanged: (customer) {
+                  setState(() => _selectedCustomer = customer);
+                  setSheetState(() {});
                 },
               ),
             ),

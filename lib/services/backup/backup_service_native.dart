@@ -16,7 +16,7 @@ class BackupService {
   BackupService(this._db);
 
   /// Creates a full backup (DB + Images) as a ZIP file.
-  Future<String?> createFullBackup() async {
+  Future<String?> createFullBackup({bool share = true}) async {
     try {
       final appDir = await getApplicationDocumentsDirectory();
       final dbPath = p.join(appDir.path, 'db.sqlite');
@@ -52,18 +52,41 @@ class BackupService {
         }
       }
 
-      // Query DB for image paths
-      final products = await _db.select(_db.products).get();
-      for (var p in products) collect(p.imageUrl);
+      // Query DB for image paths efficiently in parallel
+      final results = await Future.wait([
+        (_db.selectOnly(
+          _db.products,
+        )..addColumns([_db.products.imageUrl])).get(),
+        (_db.selectOnly(
+          _db.stores,
+        )..addColumns([_db.stores.logoUrl, _db.stores.adminAvatar])).get(),
+        (_db.selectOnly(
+          _db.profiles,
+        )..addColumns([_db.profiles.avatarUrl])).get(),
+        (_db.selectOnly(
+          _db.attendanceLogs,
+        )..addColumns([_db.attendanceLogs.photoUrl])).get(),
+        (_db.selectOnly(
+          _db.categories,
+        )..addColumns([_db.categories.iconUrl])).get(),
+      ]);
 
-      final stores = await _db.select(_db.stores).get();
-      for (var s in stores) collect(s.logoUrl);
-
-      final profiles = await _db.select(_db.profiles).get();
-      for (var u in profiles) collect(u.avatarUrl);
-
-      final attendance = await _db.select(_db.attendanceLogs).get();
-      for (var a in attendance) collect(a.photoUrl);
+      for (var row in results[0]) {
+        collect(row.read(_db.products.imageUrl));
+      }
+      for (var row in results[1]) {
+        collect(row.read(_db.stores.logoUrl));
+        collect(row.read(_db.stores.adminAvatar));
+      }
+      for (var row in results[2]) {
+        collect(row.read(_db.profiles.avatarUrl));
+      }
+      for (var row in results[3]) {
+        collect(row.read(_db.attendanceLogs.photoUrl));
+      }
+      for (var row in results[4]) {
+        collect(row.read(_db.categories.iconUrl));
+      }
 
       int copiedCount = 0;
       for (var path in uniqueImagePaths) {
@@ -95,8 +118,12 @@ class BackupService {
       await stagingDir.delete(recursive: true);
 
       // Share
-      final xFile = XFile(zipPath);
-      await Share.shareXFiles([xFile], text: 'POS Kasir Asri Full Backup');
+      if (share) {
+        final xFile = XFile(zipPath);
+        await SharePlus.instance.share(
+          ShareParams(files: [xFile], text: 'POS Kasir Asri Full Backup'),
+        );
+      }
 
       return zipPath;
     } catch (e) {
@@ -232,6 +259,7 @@ class BackupService {
         await fixTable('stores', 'admin_avatar', 'id');
         await fixTable('profiles', 'avatar_url', 'id');
         await fixTable('attendance_logs', 'photo_url', 'id');
+        await fixTable('categories', 'icon_url', 'id');
 
         debugPrint("Restore: Image paths updated successfully.");
       } catch (e) {

@@ -231,6 +231,16 @@ class _CategoryPageState extends State<CategoryPage> {
             final isWide = MediaQuery.of(ctx).size.width >= 720;
             if (isWide) return const SizedBox.shrink();
 
+            if (widget.onMenuPressed != null) {
+              return IconButton(
+                icon: Icon(
+                  CupertinoIcons.bars,
+                  color: isDark ? Colors.white : const Color(0xFF2D3436),
+                ),
+                onPressed: widget.onMenuPressed,
+              );
+            }
+
             if (Navigator.canPop(context)) {
               return IconButton(
                 icon: Icon(
@@ -246,13 +256,7 @@ class _CategoryPageState extends State<CategoryPage> {
                 CupertinoIcons.bars,
                 color: isDark ? Colors.white : const Color(0xFF2D3436),
               ),
-              onPressed: () {
-                if (widget.onMenuPressed != null) {
-                  widget.onMenuPressed!();
-                } else {
-                  Scaffold.of(context).openDrawer();
-                }
-              },
+              onPressed: () => Scaffold.of(ctx).openDrawer(),
             );
           },
         ),

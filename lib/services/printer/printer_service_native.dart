@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:blue_thermal_printer/blue_thermal_printer.dart';
+
 export 'package:blue_thermal_printer/blue_thermal_printer.dart'
     show BluetoothDevice;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,7 +24,7 @@ class BluetoothPrinterService {
   static const String _prefKeyName = 'printer_name';
 
   Future<void> init() async {
-    if (kIsWeb) return;
+    if (kIsWeb || Platform.isWindows) return;
     try {
       _isConnected = (await _printer.isConnected) ?? false;
       if (!_isConnected) {
@@ -33,15 +35,20 @@ class BluetoothPrinterService {
     }
   }
 
-  Future<bool?> get isConnectedStatus async => await _printer.isConnected;
+  Future<bool?> get isConnectedStatus async {
+    if (Platform.isWindows) return false;
+    return await _printer.isConnected;
+  }
 
   Future<List<BluetoothDevice>> getBondedDevices() async {
+    if (Platform.isWindows) return [];
     return await _printer.getBondedDevices();
   }
 
   Future<List<BluetoothDevice>> getDevices() => getBondedDevices();
 
   Future<bool> connect(BluetoothDevice device) async {
+    if (Platform.isWindows) return false;
     try {
       if (await _printer.isConnected ?? false) {
         await _printer.disconnect();
@@ -59,6 +66,7 @@ class BluetoothPrinterService {
   }
 
   Future<void> disconnect() async {
+    if (Platform.isWindows) return;
     await _printer.disconnect();
     _isConnected = false;
     _selectedDevice = null;
@@ -95,6 +103,7 @@ class BluetoothPrinterService {
   Future<void> testPrint() => printTest();
 
   Future<void> printTest() async {
+    if (Platform.isWindows) return;
     if (!(await _printer.isConnected ?? false)) return;
 
     _printer.printNewLine();
@@ -116,6 +125,7 @@ class BluetoothPrinterService {
     required double change,
     required String paymentMethod,
   }) async {
+    if (Platform.isWindows) return;
     if (!(await _printer.isConnected ?? false)) return;
 
     final currencyFormat = NumberFormat.currency(

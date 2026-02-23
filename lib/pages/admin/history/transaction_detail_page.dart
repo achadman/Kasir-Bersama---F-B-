@@ -210,7 +210,6 @@ class TransactionDetailPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 32),
-
             // Print Action
             SizedBox(
               width: double.infinity,
@@ -273,7 +272,7 @@ class TransactionDetailPage extends StatelessWidget {
                         paymentMethod:
                             transaction['paymentMethod']?.toString() ?? "TUNAI",
                         onNewTransaction: () {
-                          // Just close the dialog and return to history
+                          // Just close the dialog
                         },
                       ),
                     );
@@ -290,6 +289,55 @@ class TransactionDetailPage extends StatelessWidget {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFEA5700),
                   foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  final adminCtrl = context.read<AdminController>();
+                  final receiptService = ReceiptService();
+
+                  await receiptService.shareReceiptPdf(
+                    storeName: adminCtrl.storeName ?? "Toko Asri",
+                    storeLogoUrl: adminCtrl.storeLogo,
+                    transactionId: transaction['id'].toString(),
+                    createdAt: date,
+                    items: items.map((it) {
+                      return {
+                        'name': it['productName'] ?? 'Produk',
+                        'quantity': it['quantity'],
+                        'total_price':
+                            (it['unitPrice'] ?? 0 as num).toDouble() *
+                            (it['quantity'] as num).toDouble(),
+                      };
+                    }).toList(),
+                    totalAmount: total,
+                    cashReceived:
+                        (transaction['cashReceived'] as num?)?.toDouble() ??
+                        total,
+                    change: (transaction['change'] as num?)?.toDouble() ?? 0,
+                    paymentMethod:
+                        transaction['paymentMethod']?.toString() ?? "TUNAI",
+                  );
+                },
+                icon: const Icon(CupertinoIcons.share),
+                label: Text(
+                  "BAGIKAN STRUK DIGITAL",
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFEA5700),
+                  side: const BorderSide(color: Color(0xFFEA5700), width: 2),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),

@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../services/app_database.dart';
 
-class ProductGrid extends StatelessWidget {
+class ProductGrid extends StatefulWidget {
   final String storeId;
   final String searchQuery;
   final String? categoryFilter;
@@ -26,6 +26,13 @@ class ProductGrid extends StatelessWidget {
   });
 
   @override
+  State<ProductGrid> createState() => _ProductGridState();
+}
+
+class _ProductGridState extends State<ProductGrid> {
+  List<Product>? _previousProducts;
+
+  @override
   Widget build(BuildContext context) {
     // Determine if Dark Mode
     final theme = Theme.of(context);
@@ -43,11 +50,11 @@ class ProductGrid extends StatelessWidget {
 
     // Filter using Drift Query DSL
     final query = db.select(db.products)
-      ..where((t) => t.storeId.equals(storeId))
+      ..where((t) => t.storeId.equals(widget.storeId))
       ..where((t) => t.isDeleted.equals(false));
 
-    if (categoryFilter != null && categoryFilter != "Semua") {
-      query.where((t) => t.categoryId.equals(categoryFilter!));
+    if (widget.categoryFilter != null && widget.categoryFilter != "Semua") {
+      query.where((t) => t.categoryId.equals(widget.categoryFilter!));
     }
 
     return StreamBuilder<List<Product>>(
@@ -56,16 +63,22 @@ class ProductGrid extends StatelessWidget {
         if (snapshot.hasError) {
           return Center(child: Text("Error: ${snapshot.error}"));
         }
-        if (!snapshot.hasData) {
+
+        if (snapshot.hasData) {
+          _previousProducts = snapshot.data;
+        }
+
+        // Use cached products if snapshot is still loading
+        var localProducts = snapshot.data ?? _previousProducts;
+
+        if (localProducts == null) {
           return Center(child: CircularProgressIndicator(color: primaryColor));
         }
 
-        var localProducts = snapshot.data!;
-
-        // 1. Client-side search (Drift can do this too, but let's keep logic similar for now)
+        // 1. Client-side search
         var filteredProducts = localProducts.where((p) {
-          if (searchQuery.isNotEmpty) {
-            final q = searchQuery.toLowerCase();
+          if (widget.searchQuery.isNotEmpty) {
+            final q = widget.searchQuery.toLowerCase();
             final name = (p.name ?? '').toLowerCase();
             final sku = (p.sku ?? '').toLowerCase();
             if (!name.contains(q) && !sku.contains(q)) {
@@ -76,19 +89,19 @@ class ProductGrid extends StatelessWidget {
         }).toList();
 
         // 2. Sort
-        if (filterType == "Recent") {
+        if (widget.filterType == "Recent") {
           filteredProducts.sort((a, b) {
             final da = a.lastUpdated ?? DateTime(2000);
             final db = b.lastUpdated ?? DateTime(2000);
             return db.compareTo(da);
           });
-        } else if (filterType == "Popular") {
+        } else if (widget.filterType == "Popular") {
           filteredProducts.sort(
             (a, b) => (b.stockQuantity ?? 0).compareTo(a.stockQuantity ?? 0),
           );
         }
 
-        if (filteredProducts.isEmpty) {
+        if (filteredProducts.isEmpty && widget.searchQuery.isNotEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -100,9 +113,7 @@ class ProductGrid extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  searchQuery.isEmpty
-                      ? "Belum ada produk."
-                      : "Produk tidak ditemukan.",
+                  "Produk tidak ditemukan.",
                   style: GoogleFonts.inter(color: Colors.grey[500]),
                 ),
               ],
@@ -112,202 +123,208 @@ class ProductGrid extends StatelessWidget {
 
         final products = filteredProducts;
 
-        return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 200,
-            childAspectRatio: 0.6,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-          ),
-          itemCount: products.length,
-          itemBuilder: (context, i) {
-            final p = products[i];
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: GridView.builder(
+            key: ValueKey("${widget.categoryFilter}_${widget.searchQuery}"),
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 200,
+              childAspectRatio: 0.6,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+            ),
+            itemCount: products.length,
+            itemBuilder: (context, i) {
+              final p = products[i];
 
-            // Stock Logic
-            final bool isStockManaged = p.isStockManaged;
-            final int stockQty = p.stockQuantity ?? 0;
-            final bool isOutOfStock = isStockManaged && stockQty <= 0;
+              // Stock Logic
+              final bool isStockManaged = p.isStockManaged;
+              final int stockQty = p.stockQuantity ?? 0;
+              final bool isOutOfStock = isStockManaged && stockQty <= 0;
 
-            // Base price for discount display
-            final double salePrice = p.salePrice ?? 0;
+              // Base price for discount display
+              final double salePrice = p.salePrice ?? 0;
 
-            return Opacity(
-              opacity: isOutOfStock ? 0.6 : 1.0,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: InkWell(
-                  onTap: isOutOfStock ? null : () => onItemTap(p),
-                  borderRadius: BorderRadius.circular(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Image Section
-                      Expanded(
-                        flex: 4,
-                        child: Stack(
-                          children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                borderRadius: const BorderRadius.vertical(
-                                  top: Radius.circular(20),
-                                ),
-                                color: isDark
-                                    ? Colors.grey[800]
-                                    : Colors.grey[50],
-                                image: p.imageUrl != null
-                                    ? DecorationImage(
-                                        image: FileManager().getImageProvider(
-                                          p.imageUrl!,
-                                        ),
-                                        fit: BoxFit.cover,
-                                      )
-                                    : null,
-                              ),
-                            ),
-                            // Promo Badge
-                            StreamBuilder<List<PromotionItem>>(
-                              stream:
-                                  (db.select(
-                                        db.promotionItems,
-                                      )..where((t) => t.productId.equals(p.id)))
-                                      .watch(),
-                              builder: (context, promoSnapshot) {
-                                if (promoSnapshot.hasData &&
-                                    promoSnapshot.data!.isNotEmpty) {
-                                  return Positioned(
-                                    top: 10,
-                                    left: 10,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red,
-                                        borderRadius: BorderRadius.circular(8),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withValues(
-                                              alpha: 0.2,
-                                            ),
-                                            blurRadius: 4,
-                                          ),
-                                        ],
-                                      ),
-                                      child: Text(
-                                        "PROMO",
-                                        style: GoogleFonts.inter(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                }
-                                return const SizedBox();
-                              },
-                            ),
-                          ],
-                        ),
+              return Opacity(
+                opacity: isOutOfStock ? 0.6 : 1.0,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
                       ),
-
-                      // Info Section
-                      Expanded(
-                        flex: 3,
-                        child: Padding(
-                          padding: const EdgeInsets.all(10),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    ],
+                  ),
+                  child: InkWell(
+                    onTap: isOutOfStock ? null : () => widget.onItemTap(p),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Image Section
+                        Expanded(
+                          flex: 4,
+                          child: Stack(
                             children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    p.name ?? 'Tanpa Nama',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: textHeading,
-                                    ),
+                              Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: const BorderRadius.vertical(
+                                    top: Radius.circular(20),
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    currencyFormat.format(salePrice),
-                                    style: GoogleFonts.inter(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                      color: primaryColor,
-                                    ),
-                                  ),
-                                ],
+                                  color: isDark
+                                      ? Colors.grey[800]
+                                      : Colors.grey[50],
+                                  image: p.imageUrl != null
+                                      ? DecorationImage(
+                                          image: FileManager().getImageProvider(
+                                            p.imageUrl!,
+                                          ),
+                                          fit: BoxFit.cover,
+                                        )
+                                      : null,
+                                ),
                               ),
-
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  if (isStockManaged)
-                                    Text(
-                                      isOutOfStock
-                                          ? "Habis"
-                                          : "Stok: $stockQty",
-                                      style: GoogleFonts.inter(
-                                        fontSize: 10,
-                                        color: isOutOfStock
-                                            ? Colors.red
-                                            : Colors.grey[600],
-                                        fontWeight: isOutOfStock
-                                            ? FontWeight.bold
-                                            : FontWeight.normal,
+                              // Promo Badge
+                              StreamBuilder<List<PromotionItem>>(
+                                stream:
+                                    (db.select(db.promotionItems)..where(
+                                          (t) => t.productId.equals(p.id),
+                                        ))
+                                        .watch(),
+                                builder: (context, promoSnapshot) {
+                                  if (promoSnapshot.hasData &&
+                                      promoSnapshot.data!.isNotEmpty) {
+                                    return Positioned(
+                                      top: 10,
+                                      left: 10,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red,
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withValues(
+                                                alpha: 0.2,
+                                              ),
+                                              blurRadius: 4,
+                                            ),
+                                          ],
+                                        ),
+                                        child: Text(
+                                          "PROMO",
+                                          style: GoogleFonts.inter(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
                                       ),
-                                    )
-                                  else
-                                    const SizedBox(),
-                                  if (actionBuilder != null)
-                                    actionBuilder!(context, p)
-                                  else
-                                    Container(
-                                      width: 28,
-                                      height: 28,
-                                      decoration: BoxDecoration(
-                                        color: isOutOfStock
-                                            ? Colors.grey[300]
-                                            : primaryColor,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.add_rounded,
-                                        color: Colors.white,
-                                        size: 18,
-                                      ),
-                                    ),
-                                ],
+                                    );
+                                  }
+                                  return const SizedBox();
+                                },
                               ),
                             ],
                           ),
                         ),
-                      ),
-                    ],
+
+                        // Info Section
+                        Expanded(
+                          flex: 3,
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      p.name ?? 'Tanpa Nama',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: textHeading,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      currencyFormat.format(salePrice),
+                                      style: GoogleFonts.inter(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: primaryColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    if (isStockManaged)
+                                      Text(
+                                        isOutOfStock
+                                            ? "Habis"
+                                            : "Stok: $stockQty",
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10,
+                                          color: isOutOfStock
+                                              ? Colors.red
+                                              : Colors.grey[600],
+                                          fontWeight: isOutOfStock
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
+                                        ),
+                                      )
+                                    else
+                                      const SizedBox(),
+                                    if (widget.actionBuilder != null)
+                                      widget.actionBuilder!(context, p)
+                                    else
+                                      Container(
+                                        width: 28,
+                                        height: 28,
+                                        decoration: BoxDecoration(
+                                          color: isOutOfStock
+                                              ? Colors.grey[300]
+                                              : primaryColor,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.add_rounded,
+                                          color: Colors.white,
+                                          size: 18,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         );
       },
     );

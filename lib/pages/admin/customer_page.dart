@@ -1,0 +1,355 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import '../../../services/app_database.dart';
+import '../../../services/customer_service.dart';
+import '../../../controllers/admin_controller.dart';
+import 'widgets/pinterest_card.dart';
+import 'widgets/stat_card.dart';
+
+class CustomerPage extends StatefulWidget {
+  final VoidCallback? onMenuPressed;
+  const CustomerPage({super.key, this.onMenuPressed});
+
+  @override
+  State<CustomerPage> createState() => _CustomerPageState();
+}
+
+class _CustomerPageState extends State<CustomerPage> {
+  bool _isLoading = true;
+  List<Customer> _customers = [];
+  late CustomerService _customerService;
+
+  @override
+  void initState() {
+    super.initState();
+    final db = context.read<AppDatabase>();
+    _customerService = CustomerService(db);
+    _fetchCustomers();
+  }
+
+  Future<void> _fetchCustomers() async {
+    setState(() => _isLoading = true);
+    try {
+      final admin = context.read<AdminController>();
+      if (admin.storeId != null) {
+        final data = await _customerService.getCustomers(admin.storeId!);
+        setState(() {
+          _customers = data..sort((a, b) => (b.points).compareTo(a.points));
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching customers: $e");
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _showAddCustomerDialog() {
+    final nameController = TextEditingController();
+    final phoneController = TextEditingController();
+    final emailController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          "Tambah Pelanggan Baru",
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(labelText: "Nama Lengkap"),
+            ),
+            TextField(
+              controller: phoneController,
+              decoration: const InputDecoration(labelText: "No. HP"),
+              keyboardType: TextInputType.phone,
+            ),
+            TextField(
+              controller: emailController,
+              decoration: const InputDecoration(labelText: "Email"),
+              keyboardType: TextInputType.emailAddress,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Batal"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (nameController.text.isNotEmpty) {
+                final admin = context.read<AdminController>();
+                await _customerService.addCustomer(
+                  storeId: admin.storeId!,
+                  name: nameController.text,
+                  phoneNumber: phoneController.text,
+                  email: emailController.text,
+                );
+                if (!context.mounted) return;
+                Navigator.pop(context);
+                _fetchCustomers();
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEA5700),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text("Simpan"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: AppBar(
+        title: Text(
+          "Manajemen Pelanggan",
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            onPressed: _showAddCustomerDialog,
+            icon: const Icon(CupertinoIcons.person_add_solid),
+            tooltip: "Tambah Pelanggan",
+          ),
+          const SizedBox(width: 8),
+        ],
+        leading: Builder(
+          builder: (ctx) {
+            final isWide = MediaQuery.of(ctx).size.width >= 720;
+            if (isWide) return const SizedBox.shrink();
+            return IconButton(
+              onPressed: () {
+                if (widget.onMenuPressed != null) {
+                  widget.onMenuPressed!();
+                } else {
+                  Scaffold.of(context).openDrawer();
+                }
+              },
+              icon: const Icon(CupertinoIcons.bars),
+            );
+          },
+        ),
+      ),
+      body: _isLoading
+          ? const Center(child: CupertinoActivityIndicator())
+          : RefreshIndicator(
+              onRefresh: _fetchCustomers,
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  _buildLoyaltyHeader(),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: StatCard(
+                          title: "Total Pelanggan",
+                          value: "${_customers.length}",
+                          icon: CupertinoIcons.person_2,
+                          color: const Color(0xFFEA5700),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: StatCard(
+                          title: "Total Poin",
+                          value:
+                              "${_customers.fold(0, (sum, c) => sum + (c.points))}",
+                          icon: CupertinoIcons.star_fill,
+                          color: const Color(0xFF2196F3),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 30),
+                  Text(
+                    "Daftar Pelanggan",
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: textColor,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (_customers.isEmpty)
+                    _buildEmptyState()
+                  else
+                    ..._customers.map((c) => _buildCustomerCard(c, isDark)),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildLoyaltyHeader() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFEA5700), Color(0xFFFF8C42)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFEA5700).withValues(alpha: 0.3),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Program Loyalitas",
+                    style: GoogleFonts.inter(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    "Ranking Poin Pelanggan",
+                    style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 22,
+                    ),
+                  ),
+                ],
+              ),
+              const Icon(
+                CupertinoIcons.star_circle_fill,
+                color: Colors.white,
+                size: 40,
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Text(
+            "Gunakan poin untuk memberikan diskon khusus kepada pelanggan setia Anda.",
+            style: GoogleFonts.inter(
+              color: Colors.white.withValues(alpha: 0.8),
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCustomerCard(Customer c, bool isDark) {
+    return PinterestCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: const Color(0xFFEA5700).withValues(alpha: 0.1),
+            child: Text(
+              c.name?.substring(0, 1).toUpperCase() ?? "P",
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFFEA5700),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  c.name ?? "Tanpa Nama",
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+                Text(
+                  c.phoneNumber ?? "No. HP tidak ada",
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: Colors.grey[500],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                "${c.points} Poin",
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFFEA5700),
+                  fontSize: 16,
+                ),
+              ),
+              Text(
+                "Loyalty Score",
+                style: GoogleFonts.inter(fontSize: 10, color: Colors.grey[400]),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        children: [
+          const SizedBox(height: 50),
+          Icon(
+            CupertinoIcons.person_2_square_stack,
+            size: 80,
+            color: Colors.grey[300],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            "Belum ada pelanggan",
+            style: GoogleFonts.poppins(color: Colors.grey, fontSize: 16),
+          ),
+          Text(
+            "Tambahkan pelanggan untuk memulai program loyalitas",
+            style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}

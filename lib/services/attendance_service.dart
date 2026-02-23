@@ -86,4 +86,15 @@ class AttendanceService {
       ),
     );
   }
+
+  /// Get all logs for a specific user
+  Future<List<Map<String, dynamic>>> getHistory(String userId) async {
+    final query = db.select(db.attendanceLogs)
+      ..where((t) => t.userId.equals(userId))
+      ..orderBy([(t) => OrderingTerm.desc(t.clockIn)])
+      ..limit(50);
+
+    final results = await query.get();
+    return results.map((e) => e.toJson()).toList();
+  }
 }

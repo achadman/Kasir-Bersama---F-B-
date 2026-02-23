@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../services/app_database.dart';
 import 'package:drift/drift.dart';
 import '../services/promotion_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class AdminController extends ChangeNotifier {
   final AppDatabase _db;
@@ -61,19 +63,88 @@ class AdminController extends ChangeNotifier {
     super.dispose();
   }
 
-  Future<void> loadInitialData() async {
+  Future<void> loadInitialData({String? userId}) async {
     try {
-      // 1. Load Store Info from Drift
+      final prefs = await SharedPreferences.getInstance();
+      final effectiveUserId = userId ?? prefs.getString('current_user_id');
+
+      // 1. Load active Profile
+      Profile? profile;
+      if (effectiveUserId != null) {
+        profile = await (_db.select(
+          _db.profiles,
+        )..where((t) => t.id.equals(effectiveUserId))).getSingleOrNull();
+
+        if (profile != null) {
+          // Save for persistence across restarts
+          await prefs.setString('current_user_id', effectiveUserId);
+        }
+      }
+
+      // If no specific profile requested/cached, or not found, try first one
+      if (profile == null) {
+        final profilesItems = await (_db.select(_db.profiles)..limit(1)).get();
+        if (profilesItems.isNotEmpty) {
+          profile = profilesItems.first;
+        }
+      }
+
+      // 2. Load Store Info from Drift
       final stores = await (_db.select(_db.stores)..limit(1)).get();
 
-      if (stores.isNotEmpty) {
+      if (profile != null) {
+        _userId = profile.id;
+        _userName = profile.fullName;
+        _profileUrl = profile.avatarUrl;
+        _role = profile.role;
+        _storeId = profile.storeId;
+
+        // Parse permissions
+        if (profile.permissions != null) {
+          try {
+            _permissions = Map<String, dynamic>.from(
+              jsonDecode(profile.permissions!),
+            );
+          } catch (e) {
+            _permissions = {};
+          }
+        } else {
+          _permissions = {};
+        }
+
+        // Load specific store data if linked
+        if (_storeId != null) {
+          final store =
+              await (_db.select(_db.stores)
+                    ..where((t) => t.id.equals(_storeId!))
+                    ..limit(1))
+                  .getSingleOrNull();
+          if (store != null) {
+            _storeName = store.name;
+            _storeLogo = store.logoUrl;
+            // If user has no avatar, fallback to admin avatar?
+            _profileUrl ??= store.adminAvatar;
+          }
+        }
+
+        _userProfile = {
+          'id': _userId,
+          'full_name': _userName,
+          'role': _role,
+          'avatar_url': _profileUrl,
+          'store_id': _storeId,
+          'store_name': _storeName,
+          'store_logo': _storeLogo,
+          'permissions': _permissions,
+        };
+      } else if (stores.isNotEmpty) {
         final store = stores.first;
         _storeId = store.id;
         _storeName = store.name;
         _storeLogo = store.logoUrl;
         _userName = store.adminName;
         _profileUrl = store.adminAvatar;
-        _role = 'admin'; // Always admin in local offline mode
+        _role = 'admin';
         _userId = 'local_admin';
 
         _userProfile = {
@@ -82,6 +153,8 @@ class AdminController extends ChangeNotifier {
           'role': _role,
           'avatar_url': _profileUrl,
           'store_id': _storeId,
+          'store_name': _storeName,
+          'store_logo': _storeLogo,
         };
       } else {
         // Create an initial default store if none exists
@@ -107,7 +180,11 @@ class AdminController extends ChangeNotifier {
           'id': _userId,
           'full_name': _userName,
           'role': _role,
+          'avatar_url': _profileUrl,
           'store_id': _storeId,
+          'store_name': _storeName,
+          'store_logo': _storeLogo,
+          'permissions': _permissions ?? {},
         };
       }
 

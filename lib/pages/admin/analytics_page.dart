@@ -11,6 +11,8 @@ import 'history/history_page.dart';
 import 'inventory_page.dart';
 import 'widgets/pinterest_card.dart';
 import 'widgets/stat_card.dart';
+import '../../widgets/asri_dialog.dart';
+import '../../controllers/settings_controller.dart';
 
 class AnalyticsPage extends StatefulWidget {
   final VoidCallback? onMenuPressed;
@@ -49,7 +51,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
           : const Color(0xFFF8F9FA),
       appBar: AppBar(
         title: Text(
-          "Analitik Bisnis",
+          SettingsController.instance.getString('business_analytics'),
           style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
         ),
         elevation: 0,
@@ -60,6 +62,13 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
             final isWide = MediaQuery.of(ctx).size.width >= 720;
             if (isWide) return const SizedBox.shrink();
 
+            if (widget.onMenuPressed != null) {
+              return IconButton(
+                onPressed: widget.onMenuPressed,
+                icon: const Icon(CupertinoIcons.bars),
+              );
+            }
+
             if (Navigator.canPop(context)) {
               return IconButton(
                 onPressed: () => Navigator.pop(context),
@@ -68,13 +77,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
             }
 
             return IconButton(
-              onPressed: () {
-                if (widget.onMenuPressed != null) {
-                  widget.onMenuPressed!();
-                } else {
-                  Scaffold.of(context).openDrawer();
-                }
-              },
+              onPressed: () => Scaffold.of(ctx).openDrawer(),
               icon: const Icon(CupertinoIcons.bars),
             );
           },
@@ -103,15 +106,27 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildSectionTitle("RINGKASAN PERFORMA"),
+                  _buildSectionTitle(
+                    SettingsController.instance.getString(
+                      'performance_summary',
+                    ),
+                    infoDesc:
+                        "Data akumulasi dari operasional toko Anda, termasuk jumlah staf aktif, volume transaksi, dan total penjualan dalam berbagai rentang waktu.",
+                  ),
                   const SizedBox(height: 16),
                   _buildGridSummary(controller, isDark, context, currency),
                   const SizedBox(height: 32),
-                  _buildSectionTitle("GRAFIK PENDAPATAN"),
+                  _buildSectionTitle(
+                    SettingsController.instance.getString('revenue_chart'),
+                  ),
                   const SizedBox(height: 16),
                   _buildChartSection(controller, currency, isDark),
                   const SizedBox(height: 32),
-                  _buildSectionTitle("PERTUMBUHAN BISNIS"),
+                  _buildSectionTitle(
+                    SettingsController.instance.getString('business_growth'),
+                    infoDesc:
+                        "Indikator perbandingan performa saat ini dibandingkan dengan periode sebelumnya. Membantu Anda melihat apakah bisnis sedang naik atau turun.",
+                  ),
                   const SizedBox(height: 16),
                   _buildGrowthIndicators(controller, isDark),
                   const SizedBox(height: 32),
@@ -126,14 +141,47 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: GoogleFonts.poppins(
-        fontSize: 12,
-        fontWeight: FontWeight.bold,
-        color: Colors.grey[500],
-        letterSpacing: 1.2,
+  Widget _buildSectionTitle(String title, {String? infoDesc}) {
+    return Row(
+      children: [
+        Text(
+          title,
+          style: GoogleFonts.poppins(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey[500],
+            letterSpacing: 1.2,
+          ),
+        ),
+        if (infoDesc != null) ...[
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: () => _showAnalyticsInfo(title, infoDesc),
+            child: Icon(
+              CupertinoIcons.info_circle,
+              size: 14,
+              color: Colors.grey[400],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  void _showAnalyticsInfo(String title, String desc) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AsriDialog(
+        title: title,
+        icon: CupertinoIcons.chart_bar_alt_fill,
+        iconColor: const Color(0xFFEA5700),
+        content: Text(
+          desc,
+          textAlign: TextAlign.center,
+          style: GoogleFonts.inter(height: 1.5),
+        ),
+        primaryActionLabel: "Tutup",
+        onPrimaryAction: () => Navigator.pop(ctx),
       ),
     );
   }

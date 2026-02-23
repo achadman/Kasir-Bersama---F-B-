@@ -254,14 +254,15 @@ class _DataManagementPageState extends State<DataManagementPage> {
 
   // Stock Management Methods
   Future<void> _handleRestockAll() async {
+    final db = context.read<AppDatabase>();
+    final adminCtrl = context.read<AdminController>();
+
     final amount = await _showRestockAmountDialog("Restock Semua Barang");
     if (amount == null || amount <= 0) return;
 
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      final db = context.read<AppDatabase>();
-      final adminCtrl = context.read<AdminController>();
-
       // Update all products with stock management enabled
       await (db.update(db.products)..where(
             (t) =>
@@ -306,6 +307,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
     );
     if (amount == null || amount <= 0) return;
 
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       await (db.update(db.products)..where(
@@ -346,6 +348,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
       if (selectedCategory == null) return;
     }
 
+    if (!mounted) return;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AsriDialog(
@@ -364,6 +367,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
 
     if (confirm != true) return;
 
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final query = db.update(db.products)
@@ -576,6 +580,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                           _buildActionCard(
                             title: "Ekspor Produk",
                             subtitle: "Simpan semua produk ke Excel (.xlsx)",
+                            description:
+                                "Download seluruh daftar produk Anda ke dalam file Excel. Berguna untuk cadangan data atau pengeditan massal di luar aplikasi.",
                             icon: CupertinoIcons.cube_box,
                             color: _colors['export']!,
                             onTap: _exportProducts,
@@ -583,6 +589,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                           _buildActionCard(
                             title: "Impor Produk",
                             subtitle: "Unggah Excel untuk input barang massal",
+                            description:
+                                "Gunakan template Excel (dari fitur Ekspor) untuk menambah atau memperbarui ribuan produk sekaligus. Sangat cepat untuk stok baru atau perpindahan data.",
                             icon: CupertinoIcons.cloud_upload,
                             color: _colors['import']!,
                             onTap: _handleBulkImport,
@@ -590,6 +598,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                           _buildActionCard(
                             title: "Laporan Transaksi",
                             subtitle: "Ekspor riwayat ke PDF atau Excel",
+                            description:
+                                "Melihat seluruh sejarah penjualan dalam periode tertentu. Bisa disimpan dalam format PDF (cetak) atau Excel (analisis data).",
                             icon: CupertinoIcons.doc_text,
                             color: _colors['transactions']!,
                             onTap: () => _showExportFormatDialog('transaksi'),
@@ -600,6 +610,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                       _buildActionCard(
                         title: "Ekspor Produk",
                         subtitle: "Simpan semua produk ke Excel (.xlsx)",
+                        description:
+                            "Download seluruh daftar produk Anda ke dalam file Excel. Berguna untuk cadangan data atau pengeditan massal di luar aplikasi.",
                         icon: CupertinoIcons.cube_box,
                         color: _colors['export']!,
                         onTap: _exportProducts,
@@ -608,6 +620,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                       _buildActionCard(
                         title: "Impor Produk",
                         subtitle: "Unggah Excel untuk input barang massal",
+                        description:
+                            "Gunakan template Excel (dari fitur Ekspor) untuk menambah atau memperbarui ribuan produk sekaligus. Sangat cepat untuk stok baru atau perpindahan data.",
                         icon: CupertinoIcons.cloud_upload,
                         color: _colors['import']!,
                         onTap: _handleBulkImport,
@@ -616,6 +630,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                       _buildActionCard(
                         title: "Laporan Transaksi",
                         subtitle: "Ekspor riwayat ke PDF atau Excel",
+                        description:
+                            "Melihat seluruh sejarah penjualan dalam periode tertentu. Bisa disimpan dalam format PDF (cetak) atau Excel (analisis data).",
                         icon: CupertinoIcons.doc_text,
                         color: _colors['transactions']!,
                         onTap: () => _showExportFormatDialog('transaksi'),
@@ -636,6 +652,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                           _buildActionCard(
                             title: "Restock Semua",
                             subtitle: "Tambah jumlah stok ke seluruh barang",
+                            description:
+                                "Menambah jumlah stok yang sama ke SELURUH produk yang stoknya dikelola (Terbatas). Contoh: Menambah 10 ke semua barang.",
                             icon: Icons.playlist_add_check_rounded,
                             color: _colors['restock']!,
                             onTap: _handleRestockAll,
@@ -643,6 +661,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                           _buildActionCard(
                             title: "Restock per Kategori",
                             subtitle: "Pilih kategori untuk ditambah stoknya",
+                            description:
+                                "Menambah stok hanya untuk kategori tertentu. Misal: Menambah 20 stok khusus untuk kategori 'Minuman'.",
                             icon: CupertinoIcons.square_grid_2x2,
                             color: _colors['category']!,
                             onTap: _handleRestockByCategory,
@@ -650,6 +670,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                           _buildActionCard(
                             title: "Kosongkan Semua Stok",
                             subtitle: "Setel semua stok barang menjadi 0",
+                            description:
+                                "Mengubah seluruh jumlah stok produk (Terbatas) menjadi 0. Biasanya digunakan saat ingin melakukan stok opname dari awal.",
                             icon: Icons.delete_sweep_rounded,
                             color: _colors['danger']!,
                             onTap: () => _handleEmptyStock(true),
@@ -657,6 +679,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                           _buildActionCard(
                             title: "Kosongkan Stok Kategori",
                             subtitle: "Setel stok kategori tertentu menjadi 0",
+                            description:
+                                "Mengubah stok produk dalam kategori pilihan menjadi 0 tanpa mempengaruhi kategori lain.",
                             icon: Icons.delete_outline_rounded,
                             color: _colors['danger']!.withValues(alpha: 0.8),
                             onTap: () => _handleEmptyStock(false),
@@ -667,6 +691,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                       _buildActionCard(
                         title: "Restock Semua",
                         subtitle: "Tambah jumlah stok ke seluruh barang",
+                        description:
+                            "Menambah jumlah stok yang sama ke SELURUH produk yang stoknya dikelola (Terbatas). Contoh: Menambah 10 ke semua barang.",
                         icon: Icons.playlist_add_check_rounded,
                         color: _colors['restock']!,
                         onTap: _handleRestockAll,
@@ -675,6 +701,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                       _buildActionCard(
                         title: "Restock per Kategori",
                         subtitle: "Pilih kategori untuk ditambah stoknya",
+                        description:
+                            "Menambah stok hanya untuk kategori tertentu. Misal: Menambah 20 stok khusus untuk kategori 'Minuman'.",
                         icon: CupertinoIcons.square_grid_2x2,
                         color: _colors['category']!,
                         onTap: _handleRestockByCategory,
@@ -683,6 +711,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                       _buildActionCard(
                         title: "Kosongkan Semua Stok",
                         subtitle: "Setel semua stok barang menjadi 0",
+                        description:
+                            "Mengubah seluruh jumlah stok produk (Terbatas) menjadi 0. Biasanya digunakan saat ingin melakukan stok opname dari awal.",
                         icon: Icons.delete_sweep_rounded,
                         color: _colors['danger']!,
                         onTap: () => _handleEmptyStock(true),
@@ -691,6 +721,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                       _buildActionCard(
                         title: "Kosongkan Stok Kategori",
                         subtitle: "Setel stok kategori tertentu menjadi 0",
+                        description:
+                            "Mengubah stok produk dalam kategori pilihan menjadi 0 tanpa mempengaruhi kategori lain.",
                         icon: Icons.delete_outline_rounded,
                         color: _colors['danger']!.withValues(alpha: 0.8),
                         onTap: () => _handleEmptyStock(false),
@@ -722,6 +754,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
   Widget _buildActionCard({
     required String title,
     required String subtitle,
+    required String description,
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
@@ -744,9 +777,27 @@ class _DataManagementPageState extends State<DataManagementPage> {
           ),
           child: Icon(icon, color: color),
         ),
-        title: Text(
-          title,
-          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+              ),
+            ),
+            IconButton(
+              icon: Icon(
+                CupertinoIcons.info_circle,
+                size: 18,
+                color: color.withValues(alpha: 0.6),
+              ),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: () =>
+                  _showFeatureInfo(title, description, icon, color),
+              tooltip: "Tentang fitur ini",
+            ),
+          ],
         ),
         subtitle: Text(
           subtitle,
@@ -754,6 +805,34 @@ class _DataManagementPageState extends State<DataManagementPage> {
         ),
         trailing: const Icon(CupertinoIcons.chevron_right, size: 16),
         onTap: onTap,
+      ),
+    );
+  }
+
+  void _showFeatureInfo(
+    String title,
+    String description,
+    IconData icon,
+    Color color,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AsriDialog(
+        title: title,
+        icon: icon,
+        iconColor: color,
+        content: Text(
+          description,
+          textAlign: TextAlign.center,
+          style: GoogleFonts.inter(
+            height: 1.5,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white70
+                : Colors.grey[700],
+          ),
+        ),
+        primaryActionLabel: "Paham",
+        onPrimaryAction: () => Navigator.pop(ctx),
       ),
     );
   }

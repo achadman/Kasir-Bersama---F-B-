@@ -6,6 +6,7 @@ import '../../controllers/admin_controller.dart';
 import '../../services/app_database.dart';
 import 'widgets/promotion_form_sheet.dart';
 import 'package:intl/intl.dart';
+import '../../widgets/asri_dialog.dart';
 
 class PromotionPage extends StatefulWidget {
   final VoidCallback? onMenuPressed;
@@ -69,6 +70,14 @@ class _PromotionPageState extends State<PromotionPage> {
           },
         ),
         actions: [
+          IconButton(
+            onPressed: () => _showInfoHelp(),
+            icon: Icon(
+              CupertinoIcons.info_circle,
+              color: isDark ? Colors.white70 : Colors.grey[600],
+            ),
+            tooltip: "Tentang Promosi",
+          ),
           IconButton(
             onPressed: () => _showPromotionForm(context),
             icon: const Icon(Icons.add_rounded),
@@ -335,5 +344,54 @@ class _PromotionPageState extends State<PromotionPage> {
       await controller.promotionService.deletePromotion(promo.id);
       if (mounted) setState(() {});
     }
+  }
+
+  void _showInfoHelp() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AsriDialog(
+        title: "Panduan Promosi",
+        icon: CupertinoIcons.info_circle_fill,
+        iconColor: Colors.orange,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildInfoItem(
+              "Diskon",
+              "Potongan harga langsung dalam bentuk Persen (%) atau Nominal Rupiah (Rp).",
+            ),
+            const SizedBox(height: 12),
+            _buildInfoItem(
+              "B1G1 / B2G1",
+              "Beli X barang, Gratis Y barang. Sangat efektif untuk cuci gudang atau menaikkan volume penjualan.",
+            ),
+            const SizedBox(height: 12),
+            _buildInfoItem(
+              "Paket (Bundle)",
+              "Harga khusus untuk pembelian set barang tertentu (Coming Soon).",
+            ),
+          ],
+        ),
+        primaryActionLabel: "Saya Mengerti",
+        onPrimaryAction: () => Navigator.pop(ctx),
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(String title, String desc) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 14),
+        ),
+        Text(
+          desc,
+          style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[600]),
+        ),
+      ],
+    );
   }
 }

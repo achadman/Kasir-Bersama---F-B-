@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 class PinterestCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
+  final EdgeInsetsGeometry? margin;
   final double borderRadius;
   final Color? color;
   final VoidCallback? onTap;
@@ -12,6 +13,7 @@ class PinterestCard extends StatelessWidget {
     super.key,
     required this.child,
     this.padding,
+    this.margin,
     this.borderRadius = 28,
     this.color,
     this.onTap,
@@ -24,6 +26,7 @@ class PinterestCard extends StatelessWidget {
 
     Widget content = Container(
       padding: padding ?? const EdgeInsets.all(20),
+      margin: margin,
       decoration: BoxDecoration(
         color: color ?? (isDark ? const Color(0xFF1C1C1E) : Colors.white),
         borderRadius: BorderRadius.circular(borderRadius),

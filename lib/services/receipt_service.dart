@@ -4,6 +4,9 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 
 class ReceiptService {
   final _currencyFormat = NumberFormat.currency(
@@ -11,6 +14,39 @@ class ReceiptService {
     symbol: 'Rp ',
     decimalDigits: 0,
   );
+
+  Future<void> shareReceiptPdf({
+    required String storeName,
+    String? storeLogoUrl,
+    required String transactionId,
+    required DateTime createdAt,
+    required List<Map<String, dynamic>> items,
+    required double totalAmount,
+    required double cashReceived,
+    required double change,
+    required String paymentMethod,
+  }) async {
+    final pdfBytes = await generateReceiptPdf(
+      storeName: storeName,
+      storeLogoUrl: storeLogoUrl,
+      transactionId: transactionId,
+      createdAt: createdAt,
+      items: items,
+      totalAmount: totalAmount,
+      cashReceived: cashReceived,
+      change: change,
+      paymentMethod: paymentMethod,
+    );
+
+    final directory = await getTemporaryDirectory();
+    final path = '${directory.path}/Receipt_$transactionId.pdf';
+    final file = File(path);
+    await file.writeAsBytes(pdfBytes);
+
+    await SharePlus.instance.share(
+      ShareParams(files: [XFile(path)], subject: 'Struk Belanja - $storeName'),
+    );
+  }
 
   Future<Uint8List> generateReceiptPdf({
     required String storeName,

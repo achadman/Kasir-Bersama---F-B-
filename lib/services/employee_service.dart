@@ -31,6 +31,27 @@ class EmployeeService {
     }).toList();
   }
 
+  /// Watch employees for real-time updates
+  Stream<List<Map<String, dynamic>>> watchEmployees(String storeId) {
+    return (db.select(db.profiles)
+          ..where((t) => t.storeId.equals(storeId) & t.role.equals('cashier'))
+          ..orderBy([(t) => OrderingTerm.asc(t.fullName)]))
+        .watch()
+        .map((results) {
+          return results.map((e) {
+            final map = e.toJson();
+            if (map['permissions'] != null && map['permissions'] is String) {
+              try {
+                map['permissions'] = jsonDecode(map['permissions']);
+              } catch (_) {
+                map['permissions'] = {};
+              }
+            }
+            return map;
+          }).toList();
+        });
+  }
+
   /// Create a new cashier account locally
   Future<void> createCashierAccount({
     required String id,

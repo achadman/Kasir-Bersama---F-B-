@@ -10,9 +10,16 @@ import '../../widgets/kasir_drawer.dart';
 import '../user/widgets/kasir_side_navigation.dart';
 import 'package:provider/provider.dart';
 import '../../services/platform/file_manager.dart';
+import '../../controllers/admin_controller.dart';
 
 class AttendancePage extends StatefulWidget {
-  const AttendancePage({super.key});
+  final bool showSidebar;
+  final VoidCallback? onMenuPressed;
+  const AttendancePage({
+    super.key,
+    this.showSidebar = true,
+    this.onMenuPressed,
+  });
 
   @override
   State<AttendancePage> createState() => _AttendancePageState();
@@ -23,7 +30,9 @@ class _AttendancePageState extends State<AttendancePage> {
 
   String? _userId;
   String? _storeId;
+  String? _userName;
   Map<String, dynamic>? _todayLog;
+  List<Map<String, dynamic>> _history = [];
   bool _isLoading = true;
   Timer? _timer;
   DateTime _currentTime = DateTime.now();
@@ -56,20 +65,21 @@ class _AttendancePageState extends State<AttendancePage> {
 
   Future<void> _loadData() async {
     try {
-      final db = context.read<AppDatabase>();
-      final profiles = await (db.select(db.profiles)..limit(1)).get();
-      if (profiles.isEmpty) return;
+      final admin = context.read<AdminController>();
+      if (admin.userId == null) return;
 
-      final profile = profiles.first;
-      _userId = profile.id;
-      _storeId = profile.storeId;
+      _userId = admin.userId;
+      _storeId = admin.storeId;
 
       // Get Today's Log
       final log = await _attendanceService.getTodayLog(_userId!);
+      final history = await _attendanceService.getHistory(_userId!);
 
       if (mounted) {
         setState(() {
           _todayLog = log;
+          _history = history;
+          _userName = admin.userName;
           _isLoading = false;
         });
       }
@@ -248,7 +258,8 @@ class _AttendancePageState extends State<AttendancePage> {
 
     if (_todayLog != null) {
       final status = _todayLog!['status'] ?? 'working';
-      if (_todayLog!['clock_out'] != null) {
+      final clockOutVal = _todayLog!['clockOut'] ?? _todayLog!['clock_out'];
+      if (clockOutVal != null) {
         statusText = "Selesai Bekerja";
         statusColor = Colors.green;
       } else if (status == 'break') {
@@ -263,7 +274,9 @@ class _AttendancePageState extends State<AttendancePage> {
     return Scaffold(
       backgroundColor: bgColor,
       extendBodyBehindAppBar: true,
-      drawer: const KasirDrawer(currentRoute: '/attendance'),
+      drawer: widget.showSidebar
+          ? const KasirDrawer(currentRoute: '/attendance')
+          : null,
       body: LayoutBuilder(
         builder: (context, constraints) {
           final isWideScreen = constraints.maxWidth > 900;
@@ -305,8 +318,11 @@ class _AttendancePageState extends State<AttendancePage> {
                           statusColor,
                         ),
                         const SizedBox(height: 48),
-                        // Actions
+                        // Actions Section
                         _buildActionsSection(),
+                        const SizedBox(height: 48),
+                        // History Section
+                        _buildHistorySection(isDark),
                         const SizedBox(height: 48),
                       ],
                     ),
@@ -331,14 +347,20 @@ class _AttendancePageState extends State<AttendancePage> {
                   : Builder(
                       builder: (context) => IconButton(
                         icon: Icon(CupertinoIcons.bars, color: textColor),
-                        onPressed: () => Scaffold.of(this.context).openDrawer(),
+                        onPressed: () {
+                          if (widget.onMenuPressed != null) {
+                            widget.onMenuPressed!();
+                          } else {
+                            Scaffold.of(context).openDrawer();
+                          }
+                        },
                       ),
                     ),
             ),
             body: mainContent,
           );
 
-          if (isWideScreen) {
+          if (isWideScreen && widget.showSidebar) {
             return Row(
               children: [
                 const KasirSideNavigation(currentRoute: '/attendance'),
@@ -375,6 +397,15 @@ class _AttendancePageState extends State<AttendancePage> {
       child: Column(
         children: [
           Text(
+            _userName ?? "Staff",
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
             "Status Hari Ini",
             style: GoogleFonts.inter(color: Colors.grey[500]),
           ),
@@ -394,8 +425,16 @@ class _AttendancePageState extends State<AttendancePage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildTimeStat("Masuk", _todayLog!['clock_in'], textColor),
-                _buildTimeStat("Keluar", _todayLog!['clock_out'], textColor),
+                _buildTimeStat(
+                  "Masuk",
+                  _todayLog!['clockIn'] ?? _todayLog!['clock_in'],
+                  textColor,
+                ),
+                _buildTimeStat(
+                  "Keluar",
+                  _todayLog!['clockOut'] ?? _todayLog!['clock_out'],
+                  textColor,
+                ),
               ],
             ),
           ],
@@ -440,7 +479,7 @@ class _AttendancePageState extends State<AttendancePage> {
           ),
         ],
       );
-    } else if (_todayLog!['clock_out'] == null) {
+    } else if ((_todayLog!['clockOut'] ?? _todayLog!['clock_out']) == null) {
       return Column(
         children: [
           _buildActionButton(
@@ -496,10 +535,39 @@ class _AttendancePageState extends State<AttendancePage> {
     );
   }
 
-  Widget _buildTimeStat(String label, String? timestamp, Color textColor) {
+  Widget _buildTimeStat(String label, dynamic timestamp, Color textColor) {
     String time = "--:--";
-    if (timestamp != null) {
-      time = DateFormat('HH:mm').format(DateTime.parse(timestamp).toLocal());
+    if (timestamp != null &&
+        timestamp.toString() != "null" &&
+        timestamp.toString().isNotEmpty) {
+      try {
+        if (timestamp is DateTime) {
+          time = DateFormat('HH:mm').format(timestamp.toLocal());
+        } else if (timestamp is int) {
+          // Drift often exports DateTime as Unix timestamp IN SECONDS or MILLISECONDS
+          // SQLite stores it as an int.
+          final date = DateTime.fromMillisecondsSinceEpoch(
+            timestamp < 10000000000 ? timestamp * 1000 : timestamp,
+          );
+          time = DateFormat('HH:mm').format(date.toLocal());
+        } else {
+          final parsed = DateTime.tryParse(timestamp.toString());
+          if (parsed != null) {
+            time = DateFormat('HH:mm').format(parsed.toLocal());
+          } else {
+            // Check if string is actually a number
+            final numeric = int.tryParse(timestamp.toString());
+            if (numeric != null) {
+              final date = DateTime.fromMillisecondsSinceEpoch(
+                numeric < 10000000000 ? numeric * 1000 : numeric,
+              );
+              time = DateFormat('HH:mm').format(date.toLocal());
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint("Error parsing time: $e");
+      }
     }
     return Column(
       children: [
@@ -544,6 +612,151 @@ class _AttendancePageState extends State<AttendancePage> {
           style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
         ),
       ),
+    );
+  }
+
+  Widget _buildHistorySection(bool isDark) {
+    if (_history.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+          child: Text(
+            "RIWAYAT ABSENSI",
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[500],
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _history.length,
+          itemBuilder: (context, index) {
+            final log = _history[index];
+            final clockIn = log['clockIn'] ?? log['clock_in'];
+            final clockOut = log['clockOut'] ?? log['clock_out'];
+
+            DateTime date = DateTime.now();
+            if (clockIn != null) {
+              if (clockIn is int) {
+                date = DateTime.fromMillisecondsSinceEpoch(
+                  clockIn < 10000000000 ? clockIn * 1000 : clockIn,
+                );
+              } else {
+                date = DateTime.tryParse(clockIn.toString()) ?? DateTime.now();
+              }
+            }
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark ? Colors.white10 : Colors.grey[200]!,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      CupertinoIcons.calendar,
+                      size: 20,
+                      color: Colors.blue,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          DateFormat('EEEE, d MMM yyyy', 'id').format(date),
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            _buildMiniTime(
+                              "Masuk",
+                              clockIn,
+                              Colors.green,
+                              isDark,
+                            ),
+                            const SizedBox(width: 16),
+                            _buildMiniTime(
+                              "Keluar",
+                              clockOut,
+                              Colors.red,
+                              isDark,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMiniTime(
+    String label,
+    dynamic timestamp,
+    Color col,
+    bool isDark,
+  ) {
+    String time = "--:--";
+    if (timestamp != null) {
+      if (timestamp is int) {
+        final date = DateTime.fromMillisecondsSinceEpoch(
+          timestamp < 10000000000 ? timestamp * 1000 : timestamp,
+        );
+        time = DateFormat('HH:mm').format(date.toLocal());
+      } else {
+        final parsed = DateTime.tryParse(timestamp.toString());
+        if (parsed != null) {
+          time = DateFormat('HH:mm').format(parsed.toLocal());
+        }
+      }
+    }
+
+    return Row(
+      children: [
+        Text(
+          "$label: ",
+          style: GoogleFonts.inter(fontSize: 11, color: Colors.grey[500]),
+        ),
+        Text(
+          time,
+          style: GoogleFonts.poppins(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: time == "--:--"
+                ? Colors.grey
+                : (isDark ? Colors.white70 : Colors.black54),
+          ),
+        ),
+      ],
     );
   }
 }

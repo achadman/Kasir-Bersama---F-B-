@@ -10,6 +10,8 @@ import 'widgets/product_form_sheet.dart';
 import '../../widgets/big_search_bar.dart';
 import '../../controllers/admin_controller.dart';
 import '../../services/platform/file_manager.dart';
+import '../../widgets/asri_dialog.dart';
+import '../../controllers/settings_controller.dart';
 
 class InventoryPage extends StatefulWidget {
   final VoidCallback? onMenuPressed;
@@ -496,7 +498,7 @@ class _InventoryPageState extends State<InventoryPage> {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
-          "Inventori Barang",
+          SettingsController.instance.getString('nav_inventory'),
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.bold,
             color: isDark ? Colors.white : const Color(0xFF2D3436),
@@ -509,6 +511,16 @@ class _InventoryPageState extends State<InventoryPage> {
           builder: (ctx) {
             final isWide = MediaQuery.of(ctx).size.width >= 720;
             if (isWide) return const SizedBox.shrink();
+
+            if (widget.onMenuPressed != null) {
+              return IconButton(
+                icon: Icon(
+                  CupertinoIcons.bars,
+                  color: isDark ? Colors.white : const Color(0xFF2D3436),
+                ),
+                onPressed: widget.onMenuPressed,
+              );
+            }
 
             if (Navigator.canPop(context)) {
               return IconButton(
@@ -525,13 +537,7 @@ class _InventoryPageState extends State<InventoryPage> {
                 CupertinoIcons.bars,
                 color: isDark ? Colors.white : const Color(0xFF2D3436),
               ),
-              onPressed: () {
-                if (widget.onMenuPressed != null) {
-                  widget.onMenuPressed!();
-                } else {
-                  Scaffold.of(context).openDrawer();
-                }
-              },
+              onPressed: () => Scaffold.of(ctx).openDrawer(),
             );
           },
         ),
@@ -585,6 +591,13 @@ class _InventoryPageState extends State<InventoryPage> {
             ),
           ),
           IconButton(
+            onPressed: () => _showInfoHelp(),
+            icon: Icon(
+              CupertinoIcons.info_circle,
+              color: isDark ? Colors.white70 : Colors.grey[600],
+            ),
+          ),
+          IconButton(
             icon: const Icon(
               CupertinoIcons.plus_circle_fill,
               color: Color(0xFFEA5700),
@@ -602,7 +615,7 @@ class _InventoryPageState extends State<InventoryPage> {
             padding: const EdgeInsets.all(20),
             child: BigSearchBar(
               controller: _searchController,
-              hintText: "Cari nama barang atau SKU...",
+              hintText: SettingsController.instance.getString('search_product'),
               onChanged: (val) {
                 // Listener already attached in initState, but we can keep this for immediate feedback if needed
                 // _filterProducts(); // logic handles by listener
@@ -1303,6 +1316,59 @@ class _InventoryPageState extends State<InventoryPage> {
           ),
         ),
       ),
+    );
+  }
+
+  void _showInfoHelp() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AsriDialog(
+        title: "Kelola Inventaris",
+        icon: CupertinoIcons.cube_box_fill,
+        iconColor: const Color(0xFFEA5700),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildInfoItem(
+              "Stok Terbatas vs Tidak Terbatas",
+              "Pilih 'Stok Terbatas' jika ingin sistem memotong stok setiap penjualan. Pilih 'Tidak Terbatas' untuk jasa atau barang yang stoknya tidak perlu dihitung.",
+            ),
+            const SizedBox(height: 12),
+            _buildInfoItem(
+              "SKU / Kode Barang",
+              "Gunakan kode unik untuk setiap barang. Anda bisa scan barcode produk untuk mengisi kolom ini secara otomatis.",
+            ),
+            const SizedBox(height: 12),
+            _buildInfoItem(
+              "Restock Cepat",
+              "Klik tombol 'Restock' pada kartu produk atau gunakan tombol massal di menu Export/Import untuk menambah stok banyak barang sekaligus.",
+            ),
+          ],
+        ),
+        primaryActionLabel: "Paham",
+        onPrimaryAction: () => Navigator.pop(ctx),
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(String title, String desc) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: GoogleFonts.poppins(
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+            color: const Color(0xFFEA5700),
+          ),
+        ),
+        Text(
+          desc,
+          style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[600]),
+        ),
+      ],
     );
   }
 }

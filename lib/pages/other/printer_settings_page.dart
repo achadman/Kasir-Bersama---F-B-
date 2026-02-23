@@ -4,8 +4,17 @@ import '../../core/app_theme.dart';
 import '../../services/bluetooth_printer_service.dart';
 import 'receipt_settings_page.dart';
 
+import '../../widgets/kasir_drawer.dart';
+import '../user/widgets/kasir_side_navigation.dart';
+
 class PrinterSettingsPage extends StatefulWidget {
-  const PrinterSettingsPage({super.key});
+  final bool showSidebar;
+  final VoidCallback? onMenuPressed;
+  const PrinterSettingsPage({
+    super.key,
+    this.showSidebar = true,
+    this.onMenuPressed,
+  });
 
   @override
   State<PrinterSettingsPage> createState() => _PrinterSettingsPageState();
@@ -52,113 +61,151 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
-      resizeToAvoidBottomInset: false, // MANDATORY
-      appBar: AppBar(
-        title: const Text(
-          "Pengaturan Printer",
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(gradient: AppTheme.defaultGradient),
-        ),
-        elevation: 0,
-        leading: Builder(
-          builder: (ctx) {
-            final isWide = MediaQuery.of(ctx).size.width >= 720;
-            if (isWide) return const SizedBox.shrink();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWideScreen = constraints.maxWidth >= 720;
 
-            if (Navigator.canPop(context)) {
-              return IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(CupertinoIcons.back, color: Colors.white),
-              );
-            }
+        final content = Scaffold(
+          backgroundColor: AppTheme.backgroundColor,
+          resizeToAvoidBottomInset: false, // MANDATORY
+          drawer: widget.showSidebar
+              ? const KasirDrawer(currentRoute: '/printer-settings')
+              : null,
+          appBar: AppBar(
+            title: const Text(
+              "Pengaturan Printer",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            flexibleSpace: Container(
+              decoration: const BoxDecoration(
+                gradient: AppTheme.defaultGradient,
+              ),
+            ),
+            elevation: 0,
+            leading: Builder(
+              builder: (ctx) {
+                if (isWideScreen) return const SizedBox.shrink();
 
-            return IconButton(
-              onPressed: () => Scaffold.of(context).openDrawer(),
-              icon: const Icon(CupertinoIcons.bars, color: Colors.white),
-            );
-          },
-        ),
-      ),
-      body: Column(
-        children: [
-          _ConnectionStatusBar(connected: _connected, isScanning: _isScanning),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                const Text(
-                  "Pilih Perangkat",
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blueGrey,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _DeviceDropdown(
-                  devices: _devices,
-                  selected: _selectedDevice,
-                  onChanged: (v) => setState(() => _selectedDevice = v),
-                ),
-                const SizedBox(height: 30),
-                const Text(
-                  "Aksi",
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blueGrey,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _PrinterActionButton(
-                  onPressed: _connected
-                      ? _disconnect
-                      : (_selectedDevice != null ? _connect : null),
-                  icon: _connected
-                      ? Icons.bluetooth_disabled
-                      : Icons.bluetooth_connected,
-                  label: _connected ? "Putuskan Koneksi" : "Hubungkan Printer",
-                  color: _connected ? Colors.red : AppTheme.primaryColor,
-                ),
-                const SizedBox(height: 15),
-                _PrinterActionButton(
-                  onPressed: _connected
-                      ? () => _printerService.testPrint()
-                      : null,
-                  icon: Icons.print_rounded,
-                  label: "Cetak Test Struk",
-                  color: Colors.green.shade600,
-                  isOutlined: true,
-                ),
-                const SizedBox(height: 15),
-                _PrinterActionButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ReceiptSettingsPage(),
-                    ),
-                  ),
-                  icon: Icons.settings_suggest_rounded,
-                  label: "Atur Layout Struk",
-                  color: Colors.orange.shade700,
-                  isOutlined: true,
-                ),
-                const SizedBox(height: 40),
-                const _PrinterGuideCard(),
-              ],
+                // If onMenuPressed is provided, it's likely an Admin sub-page
+                // We show the burger menu even if we could technically pop.
+                if (widget.onMenuPressed != null) {
+                  return IconButton(
+                    onPressed: widget.onMenuPressed,
+                    icon: const Icon(CupertinoIcons.bars, color: Colors.white),
+                  );
+                }
+
+                if (Navigator.canPop(context)) {
+                  return IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(CupertinoIcons.back, color: Colors.white),
+                  );
+                }
+
+                return IconButton(
+                  onPressed: () => Scaffold.of(ctx).openDrawer(),
+                  icon: const Icon(CupertinoIcons.bars, color: Colors.white),
+                );
+              },
             ),
           ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _getDevices,
-        backgroundColor: AppTheme.primaryColor,
-        child: const Icon(Icons.refresh_rounded, color: Colors.white),
-      ),
+          body: Column(
+            children: [
+              _ConnectionStatusBar(
+                connected: _connected,
+                isScanning: _isScanning,
+              ),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    const Text(
+                      "Pilih Perangkat",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blueGrey,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _DeviceDropdown(
+                      devices: _devices,
+                      selected: _selectedDevice,
+                      onChanged: (v) => setState(() => _selectedDevice = v),
+                    ),
+                    const SizedBox(height: 30),
+                    const Text(
+                      "Aksi",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blueGrey,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _PrinterActionButton(
+                      onPressed: _connected
+                          ? _disconnect
+                          : (_selectedDevice != null ? _connect : null),
+                      icon: _connected
+                          ? Icons.bluetooth_disabled
+                          : Icons.bluetooth_connected,
+                      label: _connected
+                          ? "Putuskan Koneksi"
+                          : "Hubungkan Printer",
+                      color: _connected ? Colors.red : AppTheme.primaryColor,
+                    ),
+                    const SizedBox(height: 15),
+                    _PrinterActionButton(
+                      onPressed: _connected
+                          ? () => _printerService.testPrint()
+                          : null,
+                      icon: Icons.print_rounded,
+                      label: "Cetak Test Struk",
+                      color: Colors.green.shade600,
+                      isOutlined: true,
+                    ),
+                    const SizedBox(height: 15),
+                    _PrinterActionButton(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ReceiptSettingsPage(),
+                        ),
+                      ),
+                      icon: Icons.settings_suggest_rounded,
+                      label: "Atur Layout Struk",
+                      color: Colors.orange.shade700,
+                      isOutlined: true,
+                    ),
+                    const SizedBox(height: 40),
+                    const _PrinterGuideCard(),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          floatingActionButton: FloatingActionButton(
+            onPressed: _getDevices,
+            backgroundColor: AppTheme.primaryColor,
+            child: const Icon(Icons.refresh_rounded, color: Colors.white),
+          ),
+        );
+
+        if (isWideScreen && widget.showSidebar) {
+          return Row(
+            children: [
+              const KasirSideNavigation(currentRoute: '/printer-settings'),
+              Expanded(child: content),
+            ],
+          );
+        }
+
+        return content;
+      },
     );
   }
 

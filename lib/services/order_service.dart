@@ -17,9 +17,10 @@ class OrderService {
     required double change,
     required String paymentMethod,
     required List<Map<String, dynamic>> items,
+    String? customerId,
   }) async {
     debugPrint(
-      "OrderService.createOrder: storeId=$storeId, userId=$userId, amount=$totalAmount",
+      "OrderService.createOrder: storeId=$storeId, userId=$userId, amount=$totalAmount, customerId=$customerId",
     );
 
     final txId = const Uuid().v4();
@@ -38,11 +39,30 @@ class OrderService {
               cashReceived: Value(cashReceived),
               change: Value(change),
               paymentMethod: Value(paymentMethod),
+              customerId: Value(customerId),
               createdAt: Value(now),
             ),
           );
 
-      // 2. Save Transaction Items & Update Stock
+      // 2. Update Customer Loyalty Points if applicable
+      if (customerId != null) {
+        final custQuery = db.select(db.customers)
+          ..where((t) => t.id.equals(customerId));
+        final customer = await custQuery.getSingleOrNull();
+        if (customer != null) {
+          // Rule: 1 point for every 10,000 total
+          final pointsToAdd = (totalAmount / 10000).floor();
+          if (pointsToAdd > 0) {
+            await (db.update(
+              db.customers,
+            )..where((t) => t.id.equals(customerId))).write(
+              CustomersCompanion(points: Value(customer.points + pointsToAdd)),
+            );
+          }
+        }
+      }
+
+      // 3. Save Transaction Items & Update Stock
       for (var item in items) {
         final itemId = const Uuid().v4();
         final productId = item['product_id'] as String;

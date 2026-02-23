@@ -10,10 +10,21 @@ import '../controllers/theme_controller.dart';
 import '../pages/other/printer_settings_page.dart';
 import 'package:provider/provider.dart';
 import '../controllers/admin_controller.dart';
+import '../pages/admin/inventory_page.dart';
+import '../pages/admin/category_page.dart';
+import '../pages/admin/report/profit_loss_page.dart';
+import '../pages/admin/customer_page.dart';
+import '../controllers/settings_controller.dart';
 
 class KasirDrawer extends StatefulWidget {
   final String currentRoute;
-  const KasirDrawer({super.key, required this.currentRoute});
+  final Function(int)? onIndexSelected;
+
+  const KasirDrawer({
+    super.key,
+    required this.currentRoute,
+    this.onIndexSelected,
+  });
 
   @override
   State<KasirDrawer> createState() => _KasirDrawerState();
@@ -110,61 +121,166 @@ class _KasirDrawerState extends State<KasirDrawer> {
                   vertical: 10,
                 ),
                 children: [
-                  _buildSectionTitle("NAVIGASI"),
-                  _buildModernItem(
-                    icon: CupertinoIcons.home,
-                    label: "Beranda",
-                    isSelected: widget.currentRoute == '/kasir',
-                    accentColor: accentColor,
-                    onTap: () {
-                      Navigator.pop(context);
-                      if (widget.currentRoute != '/kasir') {
-                        Navigator.pushReplacementNamed(context, '/kasir');
-                      }
-                    },
+                  _buildSectionTitle(
+                    SettingsController.instance.getString('navigation'),
                   ),
+                  if (_hasPerm(adminCtrl, 'pos_access'))
+                    _buildModernItem(
+                      icon: CupertinoIcons.home,
+                      label: SettingsController.instance.getString('beranda'),
+                      isSelected: widget.currentRoute == '/kasir',
+                      accentColor: accentColor,
+                      onTap: () {
+                        Navigator.pop(context);
+                        if (widget.onIndexSelected != null) {
+                          widget.onIndexSelected!(0);
+                        } else if (widget.currentRoute != '/kasir') {
+                          Navigator.pushReplacementNamed(context, '/kasir');
+                        }
+                      },
+                    ),
+                  if (_hasPerm(adminCtrl, 'manage_inventory'))
+                    _buildModernItem(
+                      icon: CupertinoIcons.cube_box,
+                      label: SettingsController.instance.getString(
+                        'nav_inventory',
+                      ),
+                      isSelected: widget.currentRoute == '/inventory',
+                      accentColor: accentColor,
+                      onTap: () {
+                        Navigator.pop(context);
+                        // For cashiers, we might need a way to show just this page
+                        // but for now, let's navigate to a dedicated route or index
+                        // the AdminPage handles these indexes.
+                        // However, KasirPage only handles 0-3.
+                        // We might need to extend KasirPage or let them go to AdminPage
+                        // but AdminPage currently requires role == admin/owner.
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (ctx) => const InventoryPage(),
+                          ),
+                        );
+                      },
+                    ),
+                  if (_hasPerm(adminCtrl, 'manage_categories'))
+                    _buildModernItem(
+                      icon: CupertinoIcons.tag,
+                      label: SettingsController.instance.getString(
+                        'nav_category',
+                      ),
+                      isSelected: widget.currentRoute == '/categories',
+                      accentColor: accentColor,
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (ctx) =>
+                                CategoryPage(storeId: adminCtrl.storeId!),
+                          ),
+                        );
+                      },
+                    ),
                   _buildModernItem(
                     icon: CupertinoIcons.clock,
-                    label: "Absensi Staff",
+                    label: SettingsController.instance.getString('absen_staff'),
                     isSelected: widget.currentRoute == '/attendance',
                     accentColor: accentColor,
                     onTap: () {
                       Navigator.pop(context);
-                      if (widget.currentRoute != '/attendance') {
+                      if (widget.onIndexSelected != null) {
+                        widget.onIndexSelected!(2);
+                      } else if (widget.currentRoute != '/attendance') {
                         Navigator.pushReplacementNamed(context, '/attendance');
                       }
                     },
                   ),
+                  if (_hasPerm(adminCtrl, 'view_history'))
+                    _buildModernItem(
+                      icon: CupertinoIcons.doc_text,
+                      label: SettingsController.instance.getString(
+                        'nav_history',
+                      ),
+                      isSelected: widget.currentRoute == '/order-history',
+                      accentColor: accentColor,
+                      onTap: () {
+                        Navigator.pop(context);
+                        if (widget.onIndexSelected != null) {
+                          widget.onIndexSelected!(1);
+                        } else {
+                          Navigator.pushReplacementNamed(
+                            context,
+                            '/order-history',
+                          );
+                        }
+                      },
+                    ),
+                  if (_hasPerm(adminCtrl, 'view_reports'))
+                    _buildModernItem(
+                      icon: CupertinoIcons.chart_bar_square,
+                      label: SettingsController.instance.getString(
+                        'nav_profit_loss',
+                      ),
+                      isSelected: widget.currentRoute == '/profit-loss',
+                      accentColor: accentColor,
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (ctx) =>
+                                ProfitLossPage(storeId: adminCtrl.storeId!),
+                          ),
+                        );
+                      },
+                    ),
                   _buildModernItem(
-                    icon: CupertinoIcons.doc_text,
-                    label: "Riwayat Pesanan",
-                    isSelected: widget.currentRoute == '/order-history',
-                    accentColor: accentColor,
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.pushReplacementNamed(context, '/order-history');
-                    },
-                  ),
-                  _buildModernItem(
-                    icon: CupertinoIcons.printer,
-                    label: "Pengaturan Printer",
-                    isSelected: widget.currentRoute == '/printer-settings',
+                    icon: CupertinoIcons.person_2,
+                    label: "Loyalty Pelanggan",
+                    isSelected: widget.currentRoute == '/customers',
                     accentColor: accentColor,
                     onTap: () {
                       Navigator.pop(context);
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (ctx) => const PrinterSettingsPage(),
+                          builder: (ctx) => const CustomerPage(),
                         ),
                       );
                     },
                   ),
+                  if (_hasPerm(adminCtrl, 'manage_printer'))
+                    _buildModernItem(
+                      icon: CupertinoIcons.printer,
+                      label: SettingsController.instance.getString(
+                        'nav_printer',
+                      ),
+                      isSelected: widget.currentRoute == '/printer-settings',
+                      accentColor: accentColor,
+                      onTap: () {
+                        Navigator.pop(context);
+                        if (widget.onIndexSelected != null) {
+                          widget.onIndexSelected!(3);
+                        } else {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (ctx) => const PrinterSettingsPage(),
+                            ),
+                          );
+                        }
+                      },
+                    ),
                   if (role == 'admin' || role == 'owner') ...[
-                    _buildSectionTitle("ADMINISTRASI"),
+                    _buildSectionTitle(
+                      SettingsController.instance.getString('administration'),
+                    ),
                     _buildModernItem(
                       icon: CupertinoIcons.shield_lefthalf_fill,
-                      label: "Panel Admin",
+                      label: SettingsController.instance.getString(
+                        'admin_panel',
+                      ),
                       isSelected: false,
                       accentColor: Colors.blue,
                       isSpecial: true,
@@ -183,6 +299,13 @@ class _KasirDrawerState extends State<KasirDrawer> {
         ),
       ),
     );
+  }
+
+  bool _hasPerm(AdminController ctrl, String key) {
+    if (ctrl.role == 'admin' || ctrl.role == 'owner') return true;
+    final perms = ctrl.permissions;
+    if (perms == null) return false;
+    return perms[key] == true;
   }
 
   Widget _buildModernHeader(bool isDark, AdminController adminCtrl) {
@@ -471,7 +594,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
               const Icon(CupertinoIcons.power, color: Colors.red, size: 20),
               const SizedBox(width: 12),
               Text(
-                "Keluar Aplikasi",
+                SettingsController.instance.getString('logout_app'),
                 style: GoogleFonts.poppins(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,

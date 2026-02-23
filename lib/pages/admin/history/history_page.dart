@@ -10,13 +10,22 @@ import '../../../services/export_service.dart';
 import '../../../services/platform/file_manager.dart';
 import 'package:intl/intl.dart';
 
+import '../../../widgets/kasir_drawer.dart';
+import '../../user/widgets/kasir_side_navigation.dart';
 import '../../../services/app_database.dart';
 import 'package:drift/drift.dart' hide Column;
+import '../../../controllers/settings_controller.dart';
 
 class HistoryPage extends StatefulWidget {
   final String? storeId;
   final VoidCallback? onMenuPressed;
-  const HistoryPage({super.key, this.storeId, this.onMenuPressed});
+  final bool showSidebar;
+  const HistoryPage({
+    super.key,
+    this.storeId,
+    this.onMenuPressed,
+    this.showSidebar = true,
+  });
 
   @override
   State<HistoryPage> createState() => _HistoryPageState();
@@ -56,13 +65,18 @@ class _HistoryPageState extends State<HistoryPage> {
       length: 2,
       child: Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
+        drawer: widget.showSidebar
+            ? const KasirDrawer(currentRoute: '/order-history')
+            : null,
         body: LayoutBuilder(
           builder: (context, constraints) {
+            final isWideScreen = constraints.maxWidth >= 720;
+
             final content = Scaffold(
               backgroundColor: Colors.transparent,
               appBar: AppBar(
                 title: Text(
-                  "Riwayat & Performa",
+                  SettingsController.instance.getString('history_performance'),
                   style: GoogleFonts.poppins(
                     fontWeight: FontWeight.bold,
                     color: isDark ? Colors.white : const Color(0xFF2D3436),
@@ -75,14 +89,27 @@ class _HistoryPageState extends State<HistoryPage> {
                   IconButton(
                     onPressed: () => _showExportMenu(context),
                     icon: const Icon(Icons.ios_share_rounded),
-                    tooltip: "Ekspor Laporan",
+                    tooltip: SettingsController.instance.getString(
+                      'export_report',
+                    ),
                   ),
                   const SizedBox(width: 8),
                 ],
                 leading: Builder(
                   builder: (ctx) {
-                    final isWide = MediaQuery.of(ctx).size.width >= 720;
-                    if (isWide) return const SizedBox.shrink();
+                    if (isWideScreen) return const SizedBox.shrink();
+
+                    if (widget.onMenuPressed != null) {
+                      return IconButton(
+                        icon: Icon(
+                          CupertinoIcons.bars,
+                          color: isDark
+                              ? Colors.white
+                              : const Color(0xFF2D3436),
+                        ),
+                        onPressed: widget.onMenuPressed,
+                      );
+                    }
 
                     if (Navigator.canPop(context)) {
                       return IconButton(
@@ -101,13 +128,7 @@ class _HistoryPageState extends State<HistoryPage> {
                         CupertinoIcons.bars,
                         color: isDark ? Colors.white : const Color(0xFF2D3436),
                       ),
-                      onPressed: () {
-                        if (widget.onMenuPressed != null) {
-                          widget.onMenuPressed!();
-                        } else {
-                          Scaffold.of(context).openDrawer();
-                        }
-                      },
+                      onPressed: () => Scaffold.of(ctx).openDrawer(),
                     );
                   },
                 ),
@@ -119,14 +140,18 @@ class _HistoryPageState extends State<HistoryPage> {
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
                   ),
-                  tabs: const [
+                  tabs: [
                     Tab(
-                      text: "TRANSAKSI",
-                      icon: Icon(CupertinoIcons.list_bullet, size: 20),
+                      text: SettingsController.instance
+                          .getString('transactions')
+                          .toUpperCase(),
+                      icon: const Icon(CupertinoIcons.list_bullet, size: 20),
                     ),
                     Tab(
-                      text: "PERFORMA STAF",
-                      icon: Icon(CupertinoIcons.graph_square, size: 20),
+                      text: SettingsController.instance.getString(
+                        'performance_staff',
+                      ),
+                      icon: const Icon(CupertinoIcons.graph_square, size: 20),
                     ),
                   ],
                 ),
@@ -151,6 +176,15 @@ class _HistoryPageState extends State<HistoryPage> {
               ),
             );
 
+            if (isWideScreen && widget.showSidebar) {
+              return Row(
+                children: [
+                  const KasirSideNavigation(currentRoute: '/order-history'),
+                  Expanded(child: content),
+                ],
+              );
+            }
+
             return content;
           },
         ),
@@ -171,7 +205,7 @@ class _HistoryPageState extends State<HistoryPage> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 20),
               child: Text(
-                "Ekspor Riwayat Transaksi",
+                SettingsController.instance.getString('export_history_title'),
                 style: GoogleFonts.poppins(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
@@ -180,7 +214,7 @@ class _HistoryPageState extends State<HistoryPage> {
             ),
             ListTile(
               leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
-              title: const Text("Ekspor PDF"),
+              title: Text(SettingsController.instance.getString('export_pdf')),
               onTap: () {
                 Navigator.pop(context);
                 _handleExport('pdf');
@@ -188,7 +222,9 @@ class _HistoryPageState extends State<HistoryPage> {
             ),
             ListTile(
               leading: const Icon(Icons.table_chart, color: Colors.green),
-              title: const Text("Ekspor Excel"),
+              title: Text(
+                SettingsController.instance.getString('export_excel'),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _handleExport('excel');

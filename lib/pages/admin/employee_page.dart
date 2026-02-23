@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../services/app_database.dart';
 import '../../services/employee_service.dart';
 import '../../widgets/floating_card.dart';
+import '../../widgets/asri_dialog.dart';
 
 class EmployeePage extends StatefulWidget {
   final String storeId;
@@ -92,13 +93,28 @@ class _EmployeePageState extends State<EmployeePage> {
                     },
                   ),
                   const SizedBox(height: 24),
-                  Text(
-                    "Izin Akses Fitur",
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFFEA5700),
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Izin Akses Fitur",
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFFEA5700),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          CupertinoIcons.info_circle,
+                          size: 18,
+                          color: Color(0xFFEA5700),
+                        ),
+                        onPressed: () => _showPermissionInfo(context),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   _buildPermissionInDialog(
@@ -346,6 +362,16 @@ class _EmployeePageState extends State<EmployeePage> {
             final isWide = MediaQuery.of(ctx).size.width >= 720;
             if (isWide) return const SizedBox.shrink();
 
+            if (widget.onMenuPressed != null) {
+              return IconButton(
+                icon: Icon(
+                  CupertinoIcons.bars,
+                  color: isDark ? Colors.white : const Color(0xFF2D3436),
+                ),
+                onPressed: widget.onMenuPressed,
+              );
+            }
+
             if (Navigator.canPop(context)) {
               return IconButton(
                 icon: Icon(
@@ -361,13 +387,7 @@ class _EmployeePageState extends State<EmployeePage> {
                 CupertinoIcons.bars,
                 color: isDark ? Colors.white : const Color(0xFF2D3436),
               ),
-              onPressed: () {
-                if (widget.onMenuPressed != null) {
-                  widget.onMenuPressed!();
-                } else {
-                  Scaffold.of(context).openDrawer();
-                }
-              },
+              onPressed: () => Scaffold.of(ctx).openDrawer(),
             );
           },
         ),
@@ -375,8 +395,8 @@ class _EmployeePageState extends State<EmployeePage> {
       body: SafeArea(
         child: Stack(
           children: [
-            FutureBuilder<List<Map<String, dynamic>>>(
-              future: _employeeService.getEmployees(widget.storeId),
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _employeeService.watchEmployees(widget.storeId),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting &&
                     !_isLoading) {
@@ -430,7 +450,7 @@ class _EmployeePageState extends State<EmployeePage> {
                           ),
                         ),
                         title: Text(
-                          emp['full_name'] ?? 'Karyawan',
+                          emp['fullName'] ?? 'Karyawan',
                           style: GoogleFonts.poppins(
                             fontWeight: FontWeight.w600,
                             color: isDark
@@ -536,5 +556,68 @@ class _EmployeePageState extends State<EmployeePage> {
         if (mounted) setState(() => _isLoading = false);
       }
     }
+  }
+
+  void _showPermissionInfo(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AsriDialog(
+        title: "Penjelasan Izin",
+        icon: CupertinoIcons.shield_lefthalf_fill,
+        iconColor: const Color(0xFFEA5700),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildInfoItem(
+              "Kelola Produk",
+              "Bisa menambah, edit, dan hapus barang.",
+            ),
+            _buildInfoItem(
+              "Kelola Kategori",
+              "Bisa mengatur pengelompokan produk.",
+            ),
+            _buildInfoItem("Akses Kasir", "Wajib bagi kasir untuk transaksi."),
+            _buildInfoItem(
+              "Riwayat Pesanan",
+              "Bisa melihat nota/transaksi lama.",
+            ),
+            _buildInfoItem(
+              "Laporan Laba Rugi",
+              "Akses ke data keuangan sensitif.",
+            ),
+            _buildInfoItem(
+              "Pengaturan Printer",
+              "Bisa menyambungkan alat cetak.",
+            ),
+          ],
+        ),
+        primaryActionLabel: "Tutup",
+        onPrimaryAction: () => Navigator.pop(ctx),
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(String title, String desc) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: const Color(0xFFEA5700),
+            ),
+          ),
+          Text(
+            desc,
+            style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[600]),
+          ),
+        ],
+      ),
+    );
   }
 }

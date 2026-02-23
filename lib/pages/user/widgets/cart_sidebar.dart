@@ -3,6 +3,7 @@ import '../../../services/platform/file_manager.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../../../services/app_database.dart';
 
 class CartSidebar extends StatefulWidget {
@@ -13,6 +14,8 @@ class CartSidebar extends StatefulWidget {
   onAddItem;
   final Function(double cashReceived, String paymentMethod) onCheckout;
   final bool isProcessing;
+  final Customer? selectedCustomer;
+  final Function(Customer? customer) onCustomerChanged;
 
   const CartSidebar({
     super.key,
@@ -22,6 +25,8 @@ class CartSidebar extends StatefulWidget {
     required this.onAddItem,
     required this.onCheckout,
     required this.isProcessing,
+    this.selectedCustomer,
+    required this.onCustomerChanged,
   });
 
   @override
@@ -113,6 +118,84 @@ class _CartSidebarState extends State<CartSidebar> {
                     ),
                   ),
                 ],
+              ),
+            ),
+
+            // Customer Selection
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              child: InkWell(
+                onTap: () => _showCustomerPicker(context),
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: primaryColor.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: primaryColor.withValues(alpha: 0.1),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: primaryColor.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          widget.selectedCustomer == null
+                              ? CupertinoIcons.person_add
+                              : CupertinoIcons.person_fill,
+                          color: primaryColor,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.selectedCustomer?.name ??
+                                  "Pilih Pelanggan",
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: widget.selectedCustomer == null
+                                    ? Colors.grey
+                                    : (isDark ? Colors.white : Colors.black87),
+                              ),
+                            ),
+                            if (widget.selectedCustomer != null)
+                              Text(
+                                "${widget.selectedCustomer!.points} Points",
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      if (widget.selectedCustomer != null)
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 16),
+                          onPressed: () => widget.onCustomerChanged(null),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        )
+                      else
+                        const Icon(
+                          CupertinoIcons.chevron_right,
+                          size: 14,
+                          color: Colors.grey,
+                        ),
+                    ],
+                  ),
+                ),
               ),
             ),
 
@@ -233,14 +316,39 @@ class _CartSidebarState extends State<CartSidebar> {
                                     ),
                                   ),
                                 ),
-                                _buildQtyBtn(CupertinoIcons.plus, () {
-                                  widget.onAddItem(
-                                    p,
-                                    options: item['selected_options'],
-                                    notes: item['notes'],
-                                    price: item['price'],
-                                  );
-                                }),
+                                Builder(
+                                  builder: (context) {
+                                    final totalInCart = widget.cartItems
+                                        .where(
+                                          (ci) =>
+                                              (ci['product'] as Product).id ==
+                                              p.id,
+                                        )
+                                        .fold<int>(
+                                          0,
+                                          (sum, ci) =>
+                                              sum + (ci['quantity'] as int),
+                                        );
+                                    final bool isStockReached =
+                                        p.isStockManaged &&
+                                        totalInCart >= (p.stockQuantity ?? 0);
+
+                                    return _buildQtyBtn(
+                                      CupertinoIcons.plus,
+                                      isStockReached
+                                          ? null
+                                          : () {
+                                              widget.onAddItem(
+                                                p,
+                                                options:
+                                                    item['selected_options'],
+                                                notes: item['notes'],
+                                                price: item['price'],
+                                              );
+                                            },
+                                    );
+                                  },
+                                ),
                               ],
                             ),
                           ],
@@ -451,20 +559,27 @@ class _CartSidebarState extends State<CartSidebar> {
     );
   }
 
-  Widget _buildQtyBtn(IconData icon, VoidCallback onTap) {
+  Widget _buildQtyBtn(IconData icon, VoidCallback? onTap) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bool isDisabled = onTap == null;
     return InkWell(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: isDark ? Colors.white10 : Colors.grey[100],
+          color: isDisabled
+              ? (isDark
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : Colors.grey[50])
+              : (isDark ? Colors.white10 : Colors.grey[100]),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(
           icon,
           size: 14,
-          color: isDark ? Colors.white70 : Colors.black87,
+          color: isDisabled
+              ? Colors.grey.withValues(alpha: 0.3)
+              : (isDark ? Colors.white70 : Colors.black87),
         ),
       ),
     );
@@ -539,6 +654,107 @@ class _CartSidebarState extends State<CartSidebar> {
         backgroundColor: Colors.grey.withValues(alpha: 0.1),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         side: BorderSide.none,
+      ),
+    );
+  }
+
+  void _showCustomerPicker(BuildContext context) async {
+    final db = context.read<AppDatabase>();
+    final customers = await db.select(db.customers).get();
+
+    if (!mounted) return;
+    // Capture the widget's context after confirming it is still mounted,
+    // so we can safely use it in the modal sheet below.
+    final safeCtx = this.context;
+
+    showModalBottomSheet(
+      // ignore: use_build_context_synchronously
+      context: safeCtx,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (bCtx) => Container(
+        height: MediaQuery.of(bCtx).size.height * 0.7,
+        decoration: BoxDecoration(
+          color: Theme.of(bCtx).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "Pilih Pelanggan",
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(bCtx),
+                    child: const Text("Tutup"),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: customers.isEmpty
+                  ? Center(
+                      child: Text(
+                        "Belum ada pelanggan",
+                        style: GoogleFonts.inter(color: Colors.grey),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      itemCount: customers.length,
+                      itemBuilder: (context, index) {
+                        final c = customers[index];
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 8,
+                          ),
+                          leading: CircleAvatar(
+                            backgroundColor: const Color(
+                              0xFFEA5700,
+                            ).withValues(alpha: 0.1),
+                            child: Text(
+                              (c.name?.isNotEmpty == true ? c.name![0] : "?")
+                                  .toUpperCase(),
+                              style: const TextStyle(color: Color(0xFFEA5700)),
+                            ),
+                          ),
+                          title: Text(
+                            c.name ?? "Pelanggan",
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          subtitle: Text(
+                            "${c.phoneNumber ?? ''} • ${c.points} Points",
+                            style: GoogleFonts.inter(fontSize: 12),
+                          ),
+                          onTap: () {
+                            widget.onCustomerChanged(c);
+                            Navigator.pop(bCtx);
+                          },
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
