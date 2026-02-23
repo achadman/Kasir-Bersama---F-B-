@@ -22,6 +22,10 @@ class SettingsController {
   static const String _textScaleKey = 'text_scale';
   static const double maxTextScale = 1.3;
 
+  // Layout preference
+  final ValueNotifier<bool> isGridView = ValueNotifier(true);
+  static const String _isGridViewKey = 'is_grid_view';
+
   // Simple Localization Map
   static final Map<String, Map<String, String>> _localizedValues = {
     'id': {
@@ -201,6 +205,9 @@ class SettingsController {
     double scale = prefs.getDouble(_textScaleKey) ?? 1.0;
     if (scale > maxTextScale) scale = maxTextScale;
     textScale.value = scale;
+
+    // Load Grid View Preference
+    isGridView.value = prefs.getBool(_isGridViewKey) ?? true;
   }
 
   Future<void> setLocale(String languageCode) async {
@@ -214,6 +221,12 @@ class SettingsController {
     textScale.value = safeScale;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_textScaleKey, safeScale);
+  }
+
+  Future<void> setGridView(bool value) async {
+    isGridView.value = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_isGridViewKey, value);
   }
 
   bool get isIndonesian => locale.value.languageCode == 'id';

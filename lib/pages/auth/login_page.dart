@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../controllers/admin_controller.dart';
 import '../../services/app_database.dart'
     show AppDatabase; // Keep AppDatabase visible
+import '../../widgets/asri_dialog.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -80,8 +81,16 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+    showDialog(
+      context: context,
+      builder: (context) => AsriDialog(
+        title: "Gagal Masuk",
+        message: message,
+        icon: Icons.error_outline_rounded,
+        iconColor: Colors.redAccent,
+        primaryActionLabel: "Coba Lagi",
+        onPrimaryAction: () => Navigator.pop(context),
+      ),
     );
   }
 
