@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'pages/user/user_profile_page.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'pages/auth/login_page.dart';
 import 'pages/admin/laporan_page.dart';
 import 'pages/admin/admin_page.dart';
 import 'pages/user/kasir_page.dart';
+import 'pages/user/kasir_main_page.dart';
 import 'pages/auth/onboarding_page.dart';
 import 'pages/auth/register_page.dart';
 import 'pages/attendance/attendance_page.dart';
@@ -263,7 +265,7 @@ class _RootAppState extends State<RootApp> {
                       page = const AdminPage();
                       break;
                     case '/kasir':
-                      page = const KasirPage();
+                      page = const KasirMainPage();
                       break;
                     case '/laporan':
                       final args = settings.arguments as Map<String, dynamic>?;
@@ -271,6 +273,9 @@ class _RootAppState extends State<RootApp> {
                       break;
                     case '/attendance':
                       page = const AttendancePage();
+                      break;
+                    case '/profile':
+                      page = const UserProfilePage();
                       break;
                     case '/order-history':
                       // Mock local history view
@@ -401,21 +406,18 @@ class LocalAuthGate extends StatelessWidget {
               (lastRoute == '/kasir' ||
                   lastRoute == '/order-history' ||
                   lastRoute == '/attendance' ||
-                  lastRoute == '/printer-settings')) {
-            if (lastRoute == '/order-history') {
-              target = const HistoryPage(storeId: null);
-            } else if (lastRoute == '/attendance') {
-              target = const AttendancePage();
-            } else if (lastRoute == '/printer-settings') {
-              target = const PrinterSettingsPage();
-            } else {
-              target = const KasirPage();
-            }
+                  lastRoute == '/printer-settings' ||
+                  lastRoute == '/inventory' ||
+                  lastRoute == '/categories' ||
+                  lastRoute == '/profit-loss' ||
+                  lastRoute == '/customers' ||
+                  lastRoute == '/promotions')) {
+            target = const KasirMainPage();
           } else {
-            target = isAdmin ? const AdminPage() : const KasirPage();
+            target = isAdmin ? const AdminPage() : const KasirMainPage();
           }
         } else {
-          target = isAdmin ? const AdminPage() : const KasirPage();
+          target = isAdmin ? const AdminPage() : const KasirMainPage();
         }
 
         return target;

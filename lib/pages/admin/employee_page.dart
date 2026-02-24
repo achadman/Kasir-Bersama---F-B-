@@ -41,6 +41,8 @@ class _EmployeePageState extends State<EmployeePage> {
       'view_history': true,
       'view_reports': false,
       'manage_printer': true,
+      'manage_promotions': false,
+      'manage_customers': false,
     };
 
     await showDialog(
@@ -154,6 +156,22 @@ class _EmployeePageState extends State<EmployeePage> {
                     value: selectedPermissions['view_reports']!,
                     onChanged: (v) => setDialogState(
                       () => selectedPermissions['view_reports'] = v!,
+                    ),
+                    isDark: isDark,
+                  ),
+                  _buildPermissionInDialog(
+                    label: "Kelola Promosi & Diskon",
+                    value: selectedPermissions['manage_promotions']!,
+                    onChanged: (v) => setDialogState(
+                      () => selectedPermissions['manage_promotions'] = v!,
+                    ),
+                    isDark: isDark,
+                  ),
+                  _buildPermissionInDialog(
+                    label: "Kelola Pelanggan (Loyalty)",
+                    value: selectedPermissions['manage_customers']!,
+                    onChanged: (v) => setDialogState(
+                      () => selectedPermissions['manage_customers'] = v!,
                     ),
                     isDark: isDark,
                   ),
@@ -518,7 +536,7 @@ class _EmployeePageState extends State<EmployeePage> {
       builder: (context) => CupertinoAlertDialog(
         title: const Text("Hapus Karyawan"),
         content: Text(
-          "Apakah Anda yakin ingin menghapus ${emp['full_name']} dari toko ini?",
+          "Apakah Anda yakin ingin menghapus ${emp['fullName']} dari toko ini?",
         ),
         actions: [
           CupertinoDialogAction(

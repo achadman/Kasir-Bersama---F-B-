@@ -86,7 +86,7 @@ class AdminDrawer extends StatelessWidget {
                 _buildSectionTitle("OPERASIONAL"),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
-                    (permissions?['manage_inventory'] ?? true))
+                    (permissions?['manage_inventory'] ?? false))
                   _buildModernItem(
                     context,
                     icon: CupertinoIcons.cube_box,
@@ -99,7 +99,7 @@ class AdminDrawer extends StatelessWidget {
                   ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
-                    (permissions?['manage_categories'] ?? true))
+                    (permissions?['manage_categories'] ?? false))
                   _buildModernItem(
                     context,
                     icon: CupertinoIcons.grid,
@@ -112,7 +112,7 @@ class AdminDrawer extends StatelessWidget {
                   ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
-                    (permissions?['pos_access'] ?? true))
+                    (permissions?['pos_access'] ?? false))
                   _buildModernItem(
                     context,
                     icon: CupertinoIcons.cart,
@@ -137,7 +137,7 @@ class AdminDrawer extends StatelessWidget {
                   ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
-                    (permissions?['view_history'] ?? true))
+                    (permissions?['view_history'] ?? false))
                   _buildModernItem(
                     context,
                     icon: CupertinoIcons.doc_text,
@@ -160,7 +160,7 @@ class AdminDrawer extends StatelessWidget {
                 ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
-                    (permissions?['manage_promotions'] ?? true))
+                    (permissions?['manage_promotions'] ?? false))
                   _buildModernItem(
                     context,
                     icon: CupertinoIcons.percent,
@@ -173,7 +173,7 @@ class AdminDrawer extends StatelessWidget {
                   ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
-                    (permissions?['manage_printer'] ?? true))
+                    (permissions?['manage_printer'] ?? false))
                   _buildModernItem(
                     context,
                     icon: CupertinoIcons.printer,

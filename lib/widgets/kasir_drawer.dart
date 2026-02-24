@@ -14,6 +14,7 @@ import '../pages/admin/inventory_page.dart';
 import '../pages/admin/category_page.dart';
 import '../pages/admin/report/profit_loss_page.dart';
 import '../pages/admin/customer_page.dart';
+import '../pages/admin/promotion_page.dart';
 import '../controllers/settings_controller.dart';
 
 class KasirDrawer extends StatefulWidget {
@@ -124,6 +125,20 @@ class _KasirDrawerState extends State<KasirDrawer> {
                   _buildSectionTitle(
                     SettingsController.instance.getString('navigation'),
                   ),
+                  _buildModernItem(
+                    icon: CupertinoIcons.person_crop_circle,
+                    label: "Profil Saya",
+                    isSelected: widget.currentRoute == '/profile',
+                    accentColor: accentColor,
+                    onTap: () {
+                      Navigator.pop(context);
+                      if (widget.onIndexSelected != null) {
+                        widget.onIndexSelected!(8);
+                      } else if (widget.currentRoute != '/profile') {
+                        Navigator.pushReplacementNamed(context, '/profile');
+                      }
+                    },
+                  ),
                   if (_hasPerm(adminCtrl, 'pos_access'))
                     _buildModernItem(
                       icon: CupertinoIcons.home,
@@ -133,7 +148,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                       onTap: () {
                         Navigator.pop(context);
                         if (widget.onIndexSelected != null) {
-                          widget.onIndexSelected!(0);
+                          widget.onIndexSelected!(3);
                         } else if (widget.currentRoute != '/kasir') {
                           Navigator.pushReplacementNamed(context, '/kasir');
                         }
@@ -149,18 +164,16 @@ class _KasirDrawerState extends State<KasirDrawer> {
                       accentColor: accentColor,
                       onTap: () {
                         Navigator.pop(context);
-                        // For cashiers, we might need a way to show just this page
-                        // but for now, let's navigate to a dedicated route or index
-                        // the AdminPage handles these indexes.
-                        // However, KasirPage only handles 0-3.
-                        // We might need to extend KasirPage or let them go to AdminPage
-                        // but AdminPage currently requires role == admin/owner.
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (ctx) => const InventoryPage(),
-                          ),
-                        );
+                        if (widget.onIndexSelected != null) {
+                          widget.onIndexSelected!(1);
+                        } else {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (ctx) => const InventoryPage(),
+                            ),
+                          );
+                        }
                       },
                     ),
                   if (_hasPerm(adminCtrl, 'manage_categories'))
@@ -173,13 +186,17 @@ class _KasirDrawerState extends State<KasirDrawer> {
                       accentColor: accentColor,
                       onTap: () {
                         Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (ctx) =>
-                                CategoryPage(storeId: adminCtrl.storeId!),
-                          ),
-                        );
+                        if (widget.onIndexSelected != null) {
+                          widget.onIndexSelected!(2);
+                        } else {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (ctx) =>
+                                  CategoryPage(storeId: adminCtrl.storeId!),
+                            ),
+                          );
+                        }
                       },
                     ),
                   _buildModernItem(
@@ -190,7 +207,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                     onTap: () {
                       Navigator.pop(context);
                       if (widget.onIndexSelected != null) {
-                        widget.onIndexSelected!(2);
+                        widget.onIndexSelected!(13);
                       } else if (widget.currentRoute != '/attendance') {
                         Navigator.pushReplacementNamed(context, '/attendance');
                       }
@@ -207,7 +224,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                       onTap: () {
                         Navigator.pop(context);
                         if (widget.onIndexSelected != null) {
-                          widget.onIndexSelected!(1);
+                          widget.onIndexSelected!(4);
                         } else {
                           Navigator.pushReplacementNamed(
                             context,
@@ -226,30 +243,59 @@ class _KasirDrawerState extends State<KasirDrawer> {
                       accentColor: accentColor,
                       onTap: () {
                         Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (ctx) =>
-                                ProfitLossPage(storeId: adminCtrl.storeId!),
-                          ),
-                        );
+                        if (widget.onIndexSelected != null) {
+                          widget.onIndexSelected!(11);
+                        } else {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (ctx) =>
+                                  ProfitLossPage(storeId: adminCtrl.storeId!),
+                            ),
+                          );
+                        }
                       },
                     ),
-                  _buildModernItem(
-                    icon: CupertinoIcons.person_2,
-                    label: "Loyalty Pelanggan",
-                    isSelected: widget.currentRoute == '/customers',
-                    accentColor: accentColor,
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (ctx) => const CustomerPage(),
-                        ),
-                      );
-                    },
-                  ),
+                  if (_hasPerm(adminCtrl, 'manage_customers'))
+                    _buildModernItem(
+                      icon: CupertinoIcons.person_2,
+                      label: "Loyalty Pelanggan",
+                      isSelected: widget.currentRoute == '/customers',
+                      accentColor: accentColor,
+                      onTap: () {
+                        Navigator.pop(context);
+                        if (widget.onIndexSelected != null) {
+                          widget.onIndexSelected!(12);
+                        } else {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (ctx) => const CustomerPage(),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  if (_hasPerm(adminCtrl, 'manage_promotions'))
+                    _buildModernItem(
+                      icon: CupertinoIcons.percent,
+                      label: "Promosi & Diskon",
+                      isSelected: widget.currentRoute == '/promotions',
+                      accentColor: accentColor,
+                      onTap: () {
+                        Navigator.pop(context);
+                        if (widget.onIndexSelected != null) {
+                          widget.onIndexSelected!(9);
+                        } else {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (ctx) => PromotionPage(),
+                            ),
+                          );
+                        }
+                      },
+                    ),
                   if (_hasPerm(adminCtrl, 'manage_printer'))
                     _buildModernItem(
                       icon: CupertinoIcons.printer,
@@ -261,7 +307,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                       onTap: () {
                         Navigator.pop(context);
                         if (widget.onIndexSelected != null) {
-                          widget.onIndexSelected!(3);
+                          widget.onIndexSelected!(7);
                         } else {
                           Navigator.push(
                             context,
@@ -326,8 +372,13 @@ class _KasirDrawerState extends State<KasirDrawer> {
       ),
       child: Column(
         children: [
-          GestureDetector(
-            onTap: _updatePhoto,
+        GestureDetector(
+            onTap: () {
+              Navigator.pop(context);
+              if (widget.onIndexSelected != null) {
+                widget.onIndexSelected!(4);
+              }
+            },
             child: Stack(
               children: [
                 Container(

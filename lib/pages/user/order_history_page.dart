@@ -77,7 +77,7 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
         centerTitle: true,
         leading: Builder(
           builder: (ctx) {
-            final isWide = MediaQuery.of(ctx).size.width >= 900;
+            final isWide = MediaQuery.of(ctx).size.width >= 720;
             if (isWide) return const SizedBox.shrink();
             return IconButton(
               icon: Icon(
@@ -246,7 +246,7 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
 
     return Scaffold(
       drawer: widget.showSidebar
-          ? const KasirDrawer(currentRoute: '/order-history')
+          ? KasirDrawer(currentRoute: '/order-history')
           : null,
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -254,7 +254,7 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
           if (isWide && widget.showSidebar) {
             return Row(
               children: [
-                const KasirSideNavigation(currentRoute: '/order-history'),
+                KasirSideNavigation(currentRoute: '/order-history'),
                 Expanded(child: content),
               ],
             );

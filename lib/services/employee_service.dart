@@ -70,6 +70,8 @@ class EmployeeService {
           'view_history': true,
           'view_reports': false,
           'manage_printer': true,
+          'manage_promotions': false,
+          'manage_customers': false,
         };
 
     await db
@@ -84,6 +86,7 @@ class EmployeeService {
             storeId: Value(storeId),
             permissions: Value(jsonEncode(defaultPermissions)),
             lastUpdated: Value(DateTime.now()),
+            createdAt: Value(DateTime.now()),
           ),
         );
   }

@@ -15,6 +15,7 @@ class AdminController extends ChangeNotifier {
   }
 
   String? _userId;
+  String? _userEmail;
   String? _storeId;
   String? _userName;
   String? _profileUrl;
@@ -38,6 +39,7 @@ class AdminController extends ChangeNotifier {
 
   // Getters
   String? get userId => _userId;
+  String? get userEmail => _userEmail;
   String? get storeId => _storeId;
   String? get userName => _userName;
   String? get profileUrl => _profileUrl;
@@ -94,6 +96,7 @@ class AdminController extends ChangeNotifier {
 
       if (profile != null) {
         _userId = profile.id;
+        _userEmail = profile.email;
         _userName = profile.fullName;
         _profileUrl = profile.avatarUrl;
         _role = profile.role;
@@ -129,6 +132,7 @@ class AdminController extends ChangeNotifier {
 
         _userProfile = {
           'id': _userId,
+          'email': _userEmail,
           'full_name': _userName,
           'role': _role,
           'avatar_url': _profileUrl,

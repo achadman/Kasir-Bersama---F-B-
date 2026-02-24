@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../services/app_database.dart';
 import '../../../widgets/custom_numpad.dart';
+import '../../../widgets/order_numpad.dart';
 
 class CartSidebar extends StatefulWidget {
   final List<Map<String, dynamic>> cartItems;
@@ -36,6 +37,9 @@ class _CartSidebarState extends State<CartSidebar> {
   double _cashReceived = 0;
   String _selectedPaymentMethod = "Tunai";
   bool _isPaymentMode = false; // Toggle between Cart Review and Payment
+  int _selectedItemIndex = -1; // Added for Odoo selection
+  OrderNumpadMode _numpadMode = OrderNumpadMode.qty;
+  String _numpadBuffer = "";
 
   final _currencyFormat = NumberFormat.currency(
     locale: 'id',
@@ -84,6 +88,59 @@ class _CartSidebarState extends State<CartSidebar> {
     setState(() {});
   }
 
+  void _handleOrderNumpadTap(String val) {
+    if (_selectedItemIndex == -1 || _selectedItemIndex >= widget.cartItems.length) return;
+
+    if (val == ".") {
+      if (!_numpadBuffer.contains(".")) {
+        _numpadBuffer += ".";
+      }
+    } else {
+      _numpadBuffer += val;
+    }
+
+    _applyNumpadValue();
+  }
+
+  void _handleOrderNumpadBackspace() {
+    if (_numpadBuffer.isNotEmpty) {
+      _numpadBuffer = _numpadBuffer.substring(0, _numpadBuffer.length - 1);
+      _applyNumpadValue();
+    } else {
+      // If buffer empty, maybe reset the value? 
+      // Odoo usually keeps the value until new input.
+    }
+  }
+
+  void _handleOrderNumpadToggleSign() {
+     if (_numpadBuffer.startsWith("-")) {
+       _numpadBuffer = _numpadBuffer.substring(1);
+     } else if (_numpadBuffer.isNotEmpty) {
+       _numpadBuffer = "-$_numpadBuffer";
+     }
+     _applyNumpadValue();
+  }
+
+  void _applyNumpadValue() {
+    if (_selectedItemIndex == -1) return;
+    
+    final item = widget.cartItems[_selectedItemIndex];
+    double val = double.tryParse(_numpadBuffer) ?? 0;
+
+    setState(() {
+      if (_numpadMode == OrderNumpadMode.qty) {
+        item['quantity'] = val.toInt().clamp(1, 999);
+      } else if (_numpadMode == OrderNumpadMode.disc) {
+        // Handle discount (percentage or amount? standard is percentage in Odoo '%')
+        // For now let's assume it updates price or a disc field if we have one.
+        // Our cart items don't have a direct 'discount' field yet, they have 'price'.
+        // Let's just update 'price' for 'Price' mode.
+      } else if (_numpadMode == OrderNumpadMode.price) {
+        item['price'] = val;
+      }
+    });
+  }
+
   int _getCartTotalCount() {
     return widget.cartItems.fold(
       0,
@@ -108,28 +165,37 @@ class _CartSidebarState extends State<CartSidebar> {
 
     double change = _cashReceived - total;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF8F9FA),
-        border: Border(
-          left: BorderSide(color: isDark ? Colors.white10 : Colors.grey[200]!),
-        ),
-      ),
-      child: Column(
-        children: [
-          _buildHeader(isDark, primaryColor),
-          Expanded(
-            child: _isPaymentMode
-                ? _buildPaymentView(isDark, primaryColor, subTotal, discount, total, change)
-                : _buildCartView(isDark, primaryColor),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isDesktop = constraints.maxWidth >= 380 || MediaQuery.of(context).size.width >= 720;
+        
+        // On desktop, we hide the "Next to Payment" button and can auto-show payment details
+        // if the user wants it to be faster. 
+        
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF8F9FA),
+            border: Border(
+              left: BorderSide(color: isDark ? Colors.white10 : Colors.grey[200]!),
+            ),
           ),
-          _buildBottomAction(primaryColor, total),
-        ],
-      ),
+          child: Column(
+            children: [
+              _buildHeader(isDark, primaryColor, isDesktop),
+              Expanded(
+                child: _isPaymentMode
+                    ? _buildPaymentView(isDark, primaryColor, subTotal, discount, total, change, isDesktop)
+                    : _buildCartView(isDark, primaryColor, isDesktop),
+              ),
+              if (!isDesktop) _buildBottomAction(primaryColor, total),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildHeader(bool isDark, Color primaryColor) {
+  Widget _buildHeader(bool isDark, Color primaryColor, bool isDesktop) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 48, 24, 16),
       child: Row(
@@ -142,14 +208,14 @@ class _CartSidebarState extends State<CartSidebar> {
                   icon: const Icon(Icons.arrow_back_ios_new_rounded),
                   onPressed: () => setState(() => _isPaymentMode = false),
                 )
-              else
+              else if (!isDesktop) // Only show close on mobile sidebar
                 IconButton(
                   icon: const Icon(Icons.close_rounded),
                   onPressed: () => Navigator.pop(context),
                 ),
               const SizedBox(width: 8),
               Text(
-                _isPaymentMode ? "Pembayaran" : "Keranjang Belanja",
+                _isPaymentMode ? "Pembayaran" : "Keranjang",
                 style: GoogleFonts.poppins(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -178,7 +244,7 @@ class _CartSidebarState extends State<CartSidebar> {
     );
   }
 
-  Widget _buildCartView(bool isDark, Color primaryColor) {
+  Widget _buildCartView(bool isDark, Color primaryColor, bool isDesktop) {
     if (widget.cartItems.isEmpty) {
       return Center(
         child: Column(
@@ -191,7 +257,7 @@ class _CartSidebarState extends State<CartSidebar> {
             ),
             const SizedBox(height: 16),
             Text(
-              "Keranjang Anda kosong",
+              "Keranjang kosong",
               style: GoogleFonts.inter(color: Colors.grey, fontSize: 16),
             ),
           ],
@@ -199,309 +265,408 @@ class _CartSidebarState extends State<CartSidebar> {
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      itemCount: widget.cartItems.length,
-      separatorBuilder: (c, i) => const SizedBox(height: 16),
-      itemBuilder: (context, i) {
-        final item = widget.cartItems[i];
-        final Product p = item['product'];
-        final qty = item['quantity'] as int;
-        final price = item['price'] as double;
+    return Column(
+      children: [
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            itemCount: widget.cartItems.length,
+            separatorBuilder: (c, i) => const SizedBox(height: 12),
+            itemBuilder: (context, i) {
+              final item = widget.cartItems[i];
+              final Product p = item['product'];
+              final qty = item['quantity'] as int;
+              final price = item['price'] as double;
+              final isSelected = _selectedItemIndex == i;
 
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.02),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+              return InkWell(
+                onTap: () {
+                  setState(() {
+                    _selectedItemIndex = i;
+                    _numpadBuffer = ""; // Reset buffer on selection
+                  });
+                },
+                borderRadius: BorderRadius.circular(20),
                 child: Container(
-                  width: 56,
-                  height: 56,
-                  color: isDark ? Colors.white10 : Colors.grey[100],
-                  child: p.imageUrl != null
-                      ? Image(
-                          image: FileManager().getImageProvider(p.imageUrl!),
-                          fit: BoxFit.cover,
-                        )
-                      : Icon(Icons.fastfood, color: Colors.grey[400]),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      p.name ?? "Unknown",
-                      style: GoogleFonts.inter(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected ? primaryColor : Colors.transparent,
+                      width: 2,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _currencyFormat.format(price),
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        color: primaryColor,
-                        fontWeight: FontWeight.w600,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.02),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              Row(
-                children: [
-                  _buildQtyBtn(
-                    CupertinoIcons.minus,
-                    () => widget.onRemoveItem(item['cart_id']),
+                    ],
                   ),
-                  Container(
-                    width: 40,
-                    alignment: Alignment.center,
-                    child: Text(
-                      "$qty",
-                      style: GoogleFonts.inter(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          width: 56,
+                          height: 56,
+                          color: isDark ? Colors.white10 : Colors.grey[100],
+                          child: p.imageUrl != null
+                              ? Image(
+                                  image: FileManager().getImageProvider(p.imageUrl!),
+                                  fit: BoxFit.cover,
+                                )
+                              : Icon(Icons.fastfood, color: Colors.grey[400]),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              p.name ?? "Unknown",
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              "$qty x ${_currencyFormat.format(price)}",
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                color: isSelected ? primaryColor : Colors.grey,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        _currencyFormat.format(price * qty),
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                    ],
                   ),
-                  _buildQtyBtn(CupertinoIcons.plus, () {
-                    widget.onAddItem(
-                      p,
-                      options: item['selected_options'],
-                      notes: item['notes'],
-                      price: item['price'],
-                    );
-                  }),
-                ],
-              ),
-            ],
+                ),
+              );
+            },
           ),
-        );
-      },
+        ),
+        if (isDesktop) ...[
+          const Divider(height: 1),
+          _buildOdooSummary(isDark, primaryColor),
+          OrderNumpad(
+            mode: _numpadMode,
+            onModeChanged: (m) => setState(() => _numpadMode = m),
+            onTap: _handleOrderNumpadTap,
+            onBackspace: _handleOrderNumpadBackspace,
+            onToggleSign: _handleOrderNumpadToggleSign,
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: widget.cartItems.isEmpty 
+                  ? null 
+                  : () => setState(() => _isPaymentMode = true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6C5B7B), // Odoo-like purple-ish color
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                child: Text(
+                  "Payment",
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
-Widget _buildPaymentView(
+  Widget _buildOdooSummary(bool isDark, Color primaryColor) {
+    double subTotal = widget.cartItems.fold(
+      0,
+      (sum, item) => sum + ((item['price'] as double) * (item['quantity'] as int)),
+    );
+    double discount = widget.discountData?['total_discount'] ?? 0.0;
+    double total = subTotal - discount;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      color: isDark ? Colors.white.withOpacity(0.02) : Colors.grey[50],
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text("Taxes", style: GoogleFonts.inter(color: Colors.grey, fontSize: 12)),
+              Text(_currencyFormat.format(0), style: GoogleFonts.inter(color: Colors.grey, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "Total",
+                style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 20),
+              ),
+              Text(
+                _currencyFormat.format(total),
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.bold, 
+                  fontSize: 22,
+                  color: primaryColor,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentView(
     bool isDark,
     Color primaryColor,
     double subTotal,
     double discount,
     double total,
     double change,
+    bool isDesktop,
   ) {
-    return Padding(
-      padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 32),
-          // Compact Payment Summary Card
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        "Total Bayar",
-                        style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      Text(
-                        _currencyFormat.format(total),
-                        style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: primaryColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_selectedPaymentMethod == "Tunai") ...[
-                    const SizedBox(height: 4),
-                    _buildSummaryLine("Kembalian", change > 0 ? change : 0, isSmall: true),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "Metode Pembayaran",
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildPaymentMethodIcon("Tunai", Icons.payments_outlined),
-                        const SizedBox(width: 8),
-                        _buildPaymentMethodIcon("QRIS", Icons.qr_code_scanner),
-                        const SizedBox(width: 8),
-                        _buildPaymentMethodIcon("Transfer", Icons.account_balance_wallet),
+                const SizedBox(height: 32),
+                // Compact Payment Summary Card
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
                       ],
                     ),
-                  ],
-                ),
-
-                if (_selectedPaymentMethod == "Tunai") ...[
-                  const SizedBox(height: 24),
-                  Text(
-                    "Uang Diterima",
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _cashController,
-                    readOnly: true,
-                    showCursor: true,
-                    keyboardType: TextInputType.none,
-                    style: GoogleFonts.poppins(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: primaryColor,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: "0",
-                      prefixIcon: Padding(
-                        padding: const EdgeInsets.only(left: 18, right: 4),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              "Rp",
+                              "Total Bayar",
                               style: GoogleFonts.poppins(
-                                fontSize: 22,
                                 fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            Text(
+                              _currencyFormat.format(total),
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
                                 color: primaryColor,
                               ),
                             ),
                           ],
                         ),
-                      ),
-                      isDense: true,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: BorderSide(color: primaryColor, width: 2),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.clear, size: 24),
-                        onPressed: () {
-                          setState(() {
-                            _cashController.clear();
-                            _cashReceived = 0;
-                          });
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _buildQuickCashBtn("Pas", total),
-                        _buildQuickCashBtn("10rb", 10000),
-                        _buildQuickCashBtn("20rb", 20000),
-                        _buildQuickCashBtn("50rb", 50000),
-                        _buildQuickCashBtn("100rb", 100000),
+                        if (_selectedPaymentMethod == "Tunai") ...[
+                          const SizedBox(height: 4),
+                          _buildSummaryLine("Kembalian", change > 0 ? change : 0, isSmall: true),
+                        ],
                       ],
                     ),
                   ),
-                ],
+                ),
+                const SizedBox(height: 24),
+
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "Metode Pembayaran",
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildPaymentMethodIcon("Tunai", Icons.payments_outlined),
+                              const SizedBox(width: 8),
+                              _buildPaymentMethodIcon("QRIS", Icons.qr_code_scanner),
+                              const SizedBox(width: 8),
+                              _buildPaymentMethodIcon("Transfer", Icons.account_balance_wallet),
+                            ],
+                          ),
+                        ],
+                      ),
+
+                      if (_selectedPaymentMethod == "Tunai") ...[
+                        const SizedBox(height: 24),
+                        Text(
+                          "Uang Diterima",
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _cashController,
+                          readOnly: true,
+                          showCursor: true,
+                          keyboardType: TextInputType.none,
+                          style: GoogleFonts.poppins(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: primaryColor,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: "0",
+                            prefixIcon: Padding(
+                              padding: const EdgeInsets.only(left: 18, right: 4),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    "Rp",
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.bold,
+                                      color: primaryColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            isDense: true,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide(color: primaryColor, width: 2),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.clear, size: 24),
+                              onPressed: () {
+                                setState(() {
+                                  _cashController.clear();
+                                  _cashReceived = 0;
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              _buildQuickCashBtn("Pas", total),
+                              _buildQuickCashBtn("10rb", 10000),
+                              _buildQuickCashBtn("20rb", 20000),
+                              _buildQuickCashBtn("50rb", 50000),
+                              _buildQuickCashBtn("100rb", 100000),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 32),
               ],
             ),
           ),
-
-          if (_selectedPaymentMethod == "Tunai") ...[
-            const SizedBox(height: 16),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: CustomNumpad(
-                  onTap: _handleNumpadTap,
-                  onConfirm: () {
-                    if (widget.isProcessing) return;
-                    if (_selectedPaymentMethod == "Tunai" && _cashReceived < total) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Uang yang diterima kurang dari total bayar"),
-                          backgroundColor: Colors.orange,
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                      return;
-                    }
-                    widget.onCheckout(_cashReceived, _selectedPaymentMethod);
-                  },
+        ),
+        // Numpad remains at the bottom, not inside scroll view to keep it fixed and avoid "police line"
+        if (_selectedPaymentMethod == "Tunai")
+          Padding(
+            padding: const EdgeInsets.only(bottom: 0),
+            child: CustomNumpad(
+              onTap: _handleNumpadTap,
+              onConfirm: () {
+                if (widget.isProcessing) return;
+                if (_selectedPaymentMethod == "Tunai" && _cashReceived < total) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Uang kurang"),
+                      backgroundColor: Colors.orange,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  return;
+                }
+                widget.onCheckout(_cashReceived, _selectedPaymentMethod);
+              },
+            ),
+          )
+        else if (isDesktop)
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: widget.isProcessing
+                    ? null
+                    : () => widget.onCheckout(_cashReceived, _selectedPaymentMethod),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
+                child: widget.isProcessing
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text("Konfirmasi Pembayaran"),
               ),
             ),
-          ] else
-            const Spacer(),
-          const SizedBox(height: 16),
-        ],
-      ),
+          ),
+      ],
     );
   }
 

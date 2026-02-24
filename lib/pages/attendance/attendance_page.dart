@@ -275,11 +275,11 @@ class _AttendancePageState extends State<AttendancePage> {
       backgroundColor: bgColor,
       extendBodyBehindAppBar: true,
       drawer: widget.showSidebar
-          ? const KasirDrawer(currentRoute: '/attendance')
+          ? KasirDrawer(currentRoute: '/attendance')
           : null,
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final isWideScreen = constraints.maxWidth > 900;
+          final isWideScreen = constraints.maxWidth >= 720;
 
           final mainContent = _isLoading
               ? Center(child: CircularProgressIndicator(color: primaryColor))
@@ -363,7 +363,7 @@ class _AttendancePageState extends State<AttendancePage> {
           if (isWideScreen && widget.showSidebar) {
             return Row(
               children: [
-                const KasirSideNavigation(currentRoute: '/attendance'),
+                KasirSideNavigation(currentRoute: '/attendance'),
                 Expanded(child: content),
               ],
             );

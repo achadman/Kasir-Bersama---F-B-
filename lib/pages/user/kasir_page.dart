@@ -525,12 +525,12 @@ class _KasirPageState extends State<KasirPage> {
                 builder: (context, constraints) {
                   final isWideScreen = constraints.maxWidth >= 720;
 
-                  if (isWideScreen && widget.showSidebar) {
+                  if (isWideScreen) {
                     return Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Persistent Side Navigation
-                        if (!_isPaymentFullscreen)
+                        // Persistent Side Navigation - Only if standalone
+                        if (widget.showSidebar && !_isPaymentFullscreen)
                           const KasirSideNavigation(currentRoute: '/kasir'),
 
                         // Main Content

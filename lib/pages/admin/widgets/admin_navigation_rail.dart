@@ -12,6 +12,8 @@ class AdminNavigationRail extends StatelessWidget {
   final VoidCallback? onCustomerTap;
   final String? userName;
   final String? storeName;
+  final String? role;
+  final Map<String, dynamic>? permissions;
 
   const AdminNavigationRail({
     super.key,
@@ -23,6 +25,8 @@ class AdminNavigationRail extends StatelessWidget {
     this.onCustomerTap,
     this.userName,
     this.storeName,
+    this.role,
+    this.permissions,
   });
 
   @override
@@ -98,72 +102,89 @@ class AdminNavigationRail extends StatelessWidget {
                       label: "Dashboard",
                       isActive: selectedIndex == 0,
                     ),
-                    _buildRailItem(
-                      index: 1,
-                      icon: CupertinoIcons.cube_box_fill,
-                      label: "Barang",
-                      isActive: selectedIndex == 1,
-                    ),
-                    _buildRailItem(
-                      index: 2,
-                      icon: CupertinoIcons.grid,
-                      label: "Kategori",
-                      isActive: selectedIndex == 2,
-                    ),
-                    _buildRailItem(
-                      index: 3,
-                      icon: CupertinoIcons.cart_fill,
-                      label: "Kasir",
-                      isActive: selectedIndex == 3,
-                    ),
-                    _buildRailItem(
-                      index: 4,
-                      icon: CupertinoIcons.doc_text_fill,
-                      label: "Riwayat",
-                      isActive: selectedIndex == 4,
-                    ),
-                    _buildRailItem(
-                      index: 5,
-                      icon: CupertinoIcons.person_2_fill,
-                      label: "Karyawan",
-                      isActive: selectedIndex == 5,
-                    ),
-                    _buildRailItem(
-                      index: 6,
-                      icon: CupertinoIcons.graph_square_fill,
-                      label: "Analitik",
-                      isActive: selectedIndex == 6,
-                    ),
-                    _buildRailItem(
-                      index: 11,
-                      icon: CupertinoIcons.graph_circle_fill,
-                      label: "Laba Rugi",
-                      isActive: selectedIndex == 11,
-                    ),
+                    if (_hasPerm('manage_inventory'))
+                      _buildRailItem(
+                        index: 1,
+                        icon: CupertinoIcons.cube_box_fill,
+                        label: "Barang",
+                        isActive: selectedIndex == 1,
+                      ),
+                    if (_hasPerm('manage_categories'))
+                      _buildRailItem(
+                        index: 2,
+                        icon: CupertinoIcons.grid,
+                        label: "Kategori",
+                        isActive: selectedIndex == 2,
+                      ),
+                    if (_hasPerm('pos_access'))
+                      _buildRailItem(
+                        index: 3,
+                        icon: CupertinoIcons.cart_fill,
+                        label: "Kasir",
+                        isActive: selectedIndex == 3,
+                      ),
+                    if (_hasPerm('view_history'))
+                      _buildRailItem(
+                        index: 4,
+                        icon: CupertinoIcons.doc_text_fill,
+                        label: "Riwayat",
+                        isActive: selectedIndex == 4,
+                      ),
+                    if (role?.toLowerCase() == 'owner' ||
+                        role?.toLowerCase() == 'admin')
+                      _buildRailItem(
+                        index: 5,
+                        icon: CupertinoIcons.person_2_fill,
+                        label: "Karyawan",
+                        isActive: selectedIndex == 5,
+                      ),
+                    if (role?.toLowerCase() == 'owner' ||
+                        role?.toLowerCase() == 'admin' ||
+                        _hasPerm('view_reports'))
+                      _buildRailItem(
+                        index: 6,
+                        icon: CupertinoIcons.graph_square_fill,
+                        label: "Analitik",
+                        isActive: selectedIndex == 6,
+                      ),
+                    if (role?.toLowerCase() == 'owner' ||
+                        role?.toLowerCase() == 'admin' ||
+                        _hasPerm('view_reports'))
+                      _buildRailItem(
+                        index: 11,
+                        icon: CupertinoIcons.graph_circle_fill,
+                        label: "Laba Rugi",
+                        isActive: selectedIndex == 11,
+                      ),
                     _buildRailItem(
                       index: 12,
                       icon: CupertinoIcons.person_crop_circle_fill,
                       label: "Pelanggan",
                       isActive: selectedIndex == 12,
                     ),
-                    _buildRailItem(
-                      index: 10,
-                      icon: CupertinoIcons.cloud_download_fill,
-                      label: "Data & Stok",
-                      isActive: selectedIndex == 10,
-                    ),
-                    _buildRailItem(
-                      index: 7,
-                      icon: CupertinoIcons.printer_fill,
-                      label: "Printer",
-                      isActive: selectedIndex == 7,
-                    ),
-                    _buildRailItem(
-                      index: 9,
-                      icon: CupertinoIcons.percent,
-                      label: "Promosi",
-                      isActive: selectedIndex == 9,
-                    ),
+                    if (role?.toLowerCase() == 'owner' ||
+                        role?.toLowerCase() == 'admin' ||
+                        _hasPerm('view_reports'))
+                      _buildRailItem(
+                        index: 10,
+                        icon: CupertinoIcons.cloud_download_fill,
+                        label: "Data & Stok",
+                        isActive: selectedIndex == 10,
+                      ),
+                    if (_hasPerm('manage_printer'))
+                      _buildRailItem(
+                        index: 7,
+                        icon: CupertinoIcons.printer_fill,
+                        label: "Printer",
+                        isActive: selectedIndex == 7,
+                      ),
+                    if (_hasPerm('manage_promotions'))
+                      _buildRailItem(
+                        index: 9,
+                        icon: CupertinoIcons.percent,
+                        label: "Promosi",
+                        isActive: selectedIndex == 9,
+                      ),
                   ],
                 ),
               ),
@@ -193,6 +214,13 @@ class AdminNavigationRail extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  bool _hasPerm(String key) {
+    if (role?.toLowerCase() == 'owner' || role?.toLowerCase() == 'admin') {
+      return true;
+    }
+    return permissions?[key] ?? false;
   }
 
   Widget _buildRailItem({
