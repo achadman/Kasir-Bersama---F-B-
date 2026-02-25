@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  static const Color primaryColor = Color(0xFFFF4D4D);
+  static const Color primaryColor = Color(0xFFFF8E53);
   static const Color secondaryColor = Color(0xFFEA5700);
   static const Color backgroundColor = Color(0xFFF8F9FD);
   static const Color surfaceColor = Colors.white;
@@ -21,6 +21,7 @@ class AppTheme {
       scaffoldBackgroundColor: backgroundColor,
       colorScheme: ColorScheme.fromSeed(
         seedColor: primaryColor,
+        primary: primaryColor,
         brightness: Brightness.light,
       ),
       useMaterial3: true,

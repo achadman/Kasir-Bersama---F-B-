@@ -25,7 +25,7 @@ class BigSearchBar extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      height: 54, // Taller for better touch target/visibility
+      height: 48, // Reduced height for more compact look
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -40,7 +40,7 @@ class BigSearchBar extends StatelessWidget {
           color: isDark ? Colors.white10 : Colors.grey.withValues(alpha: 0.1),
         ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       alignment: Alignment.center,
       child: TextField(
         controller: controller,

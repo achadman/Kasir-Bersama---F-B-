@@ -150,7 +150,8 @@ class _RootAppState extends State<RootApp> {
                 },
                 theme: ThemeData(
                   colorScheme: ColorScheme.fromSeed(
-                    seedColor: const Color(0xFFFF4D4D),
+                    seedColor: const Color(0xFFFF8E53),
+                    primary: const Color(0xFFFF8E53),
                     brightness: Brightness.light,
                   ),
                   useMaterial3: true,
@@ -176,17 +177,13 @@ class _RootAppState extends State<RootApp> {
                 ),
                 darkTheme: ThemeData(
                   colorScheme: ColorScheme.fromSeed(
-                    seedColor: const Color(0xFFFF4D4D),
+                    seedColor: const Color(0xFFFF8E53),
+                    primary: const Color(0xFFFF8E53),
                     brightness: Brightness.dark,
-                    primary: const Color(0xFFFF4D4D),
                   ),
                   useMaterial3: true,
-                  scaffoldBackgroundColor: const Color(
-                    0xFF121212,
-                  ), // Deep black
-                  cardColor: const Color(
-                    0xFF1E1E1E,
-                  ), // Slightly lighter surface
+                  scaffoldBackgroundColor: const Color(0xFF121212),
+                  cardColor: const Color(0xFF1E1E1E),
                   textTheme: GoogleFonts.poppinsTextTheme(
                     ThemeData.dark().textTheme,
                   ),
@@ -215,7 +212,6 @@ class _RootAppState extends State<RootApp> {
                     }
 
                     final db = Provider.of<AppDatabase>(context, listen: false);
-                    // OFFLINE AUTH CHECK: Check if any profile exists
                     return StreamBuilder<List<Profile>>(
                       stream: (db.select(db.profiles)..limit(1)).watch(),
                       builder: (context, profileSnapshot) {
@@ -238,17 +234,14 @@ class _RootAppState extends State<RootApp> {
 
                         if (profileSnapshot.hasData &&
                             profileSnapshot.data!.isNotEmpty) {
-                          // We have a local user, go to AuthGate (refactored for local)
                           return const LocalAuthGate();
                         }
 
-                        // No local user? Go to onboarding
                         return const OnboardingPage();
                       },
                     );
                   },
                 ),
-
                 onGenerateRoute: (settings) {
                   Widget page;
                   switch (settings.name) {
@@ -278,7 +271,6 @@ class _RootAppState extends State<RootApp> {
                       page = const UserProfilePage();
                       break;
                     case '/order-history':
-                      // Mock local history view
                       page = const HistoryPage(storeId: null);
                       break;
                     case '/printer-settings':
@@ -288,7 +280,6 @@ class _RootAppState extends State<RootApp> {
                       return null;
                   }
 
-                  // SAVE LAST ROUTE
                   if (settings.name != null &&
                       [
                         '/admin',

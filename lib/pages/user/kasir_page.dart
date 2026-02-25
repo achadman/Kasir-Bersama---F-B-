@@ -193,8 +193,10 @@ class _KasirPageState extends State<KasirPage> {
       // Check if exact same item (product + options + notes) already in cart
       final existingIndex = _cartItems.indexWhere((item) {
         bool sameProduct = (item['product'] as Product).id == product.id;
-        bool sameOptions = _compareOptions(item['selected_options'], options);
-        bool sameNotes = (item['notes'] ?? '') == (notes ?? '');
+        // Treat null and empty list as same
+        final currentOptions = item['selected_options'] as List?;
+        bool sameOptions = _compareOptions(currentOptions, options);
+        bool sameNotes = (item['notes'] ?? '').trim() == (notes ?? '').trim();
         return sameProduct && sameOptions && sameNotes;
       });
 
@@ -215,18 +217,21 @@ class _KasirPageState extends State<KasirPage> {
   }
 
   bool _compareOptions(List? a, List? b) {
-    if (a == null && b == null) return true;
-    if (a == null || b == null) return false;
-    if (a.length != b.length) return false;
-
-    // Sort and compare option/value IDs
-    final listA = List<Map<String, dynamic>>.from(a)
+    // Treat null and empty as same
+    final listA = a ?? [];
+    final listB = b ?? [];
+    
+    if (listA.isEmpty && listB.isEmpty) return true;
+    if (listA.length != listB.length) return false;
+    
+    // Sort and compare option/value IDs to ensure order doesn't matter
+    final sortedA = List<Map<String, dynamic>>.from(listA)
       ..sort((x, y) => x['value_id'].compareTo(y['value_id']));
-    final listB = List<Map<String, dynamic>>.from(b)
+    final sortedB = List<Map<String, dynamic>>.from(listB)
       ..sort((x, y) => x['value_id'].compareTo(y['value_id']));
 
-    for (int i = 0; i < listA.length; i++) {
-      if (listA[i]['value_id'] != listB[i]['value_id']) return false;
+    for (int i = 0; i < sortedA.length; i++) {
+      if (sortedA[i]['value_id'] != sortedB[i]['value_id']) return false;
     }
     return true;
   }
@@ -329,17 +334,7 @@ class _KasirPageState extends State<KasirPage> {
 
       // 4. Success and Show Receipt
       if (mounted) {
-        setState(() {
-          _cartItems.clear();
-          _cashReceived = 0;
-          _cashController.clear();
-          _isPaymentFullscreen = false;
-          _discountData = {
-            'total_discount': 0.0,
-            'promo_count': 0,
-            'promo_names': [],
-          };
-        });
+        _resetPOS();
 
         Navigator.of(context).maybePop(); // Close cart sheet
 
@@ -357,14 +352,7 @@ class _KasirPageState extends State<KasirPage> {
             createdAt: now,
             items: receiptItems,
             paymentMethod: _selectedPaymentMethod,
-            onNewTransaction: () {
-              // Cart is already cleared above
-              setState(() {
-                _cartItems.clear();
-                _cashReceived = 0;
-                _cashController.clear();
-              });
-            },
+            onNewTransaction: _resetPOS,
           ),
         );
       }
@@ -380,6 +368,20 @@ class _KasirPageState extends State<KasirPage> {
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
+  }
+
+  void _resetPOS() {
+    setState(() {
+      _cartItems.clear();
+      _cashReceived = 0;
+      _cashController.clear();
+      _isPaymentFullscreen = false;
+      _discountData = {
+        'total_discount': 0.0,
+        'promo_count': 0,
+        'promo_names': [],
+      };
+    });
   }
 
   bool _isProcessing = false;
@@ -424,24 +426,20 @@ class _KasirPageState extends State<KasirPage> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
+    final isWide = MediaQuery.of(context).size.width >= 720;
+
     return Scaffold(
       drawer: widget.showSidebar
           ? const KasirDrawer(currentRoute: '/kasir')
           : null,
-      body: NestedScrollView(
-        headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          SliverAppBar(
-            toolbarHeight: 74, // Increased to fit BigSearchBar
-            expandedHeight: 74,
-            floating: true,
-            pinned: true,
-            primary: true,
+      appBar: isWide 
+        ? null 
+        : AppBar(
+            toolbarHeight: 74,
             backgroundColor: isDark ? const Color(0xFF1A1C1E) : Colors.white,
             elevation: 0,
             leading: Builder(
               builder: (ctx) {
-                final isWide = MediaQuery.of(ctx).size.width >= 720;
-                if (isWide) return const SizedBox.shrink();
                 return IconButton(
                   icon: Icon(
                     CupertinoIcons.bars,
@@ -460,184 +458,221 @@ class _KasirPageState extends State<KasirPage> {
             ),
             title: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: BigSearchBar(
-                controller: _searchController,
-                hintText: "Cari menu atau Scan SKU...",
-                onChanged: (val) =>
-                    setState(() => _searchQuery = val.toLowerCase()),
-                onSubmitted: (val) => _searchAndAddBySku(val),
-                onClear: () {
-                  setState(() {
-                    _searchController.clear();
-                    _searchQuery = "";
-                  });
-                },
+              child: Text(
+                _storeName ?? "Toko Kasir Asri",
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
               ),
             ),
             actions: [
-              // Layout Toggle Button
-              IconButton(
-                icon: Icon(
-                  _isGridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
-                onPressed: () {
-                  final newValue = !_isGridView;
-                  setState(() => _isGridView = newValue);
-                  SettingsController.instance.setGridView(newValue);
-                },
-                tooltip: _isGridView ? "Tampilan List" : "Tampilan Grid",
-              ),
-              IconButton(
-                icon: Stack(
-                  children: [
-                    Icon(
-                      CupertinoIcons.cart,
-                      color: isDark ? Colors.white : Colors.black87,
-                    ),
-                    if (_getCartTotalCount() > 0)
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                          constraints: const BoxConstraints(
-                            minWidth: 8,
-                            minHeight: 8,
+              // Only show cart icon on mobile
+              Builder(builder: (ctx) {
+                return IconButton(
+                  icon: Stack(
+                    children: [
+                      Icon(
+                        CupertinoIcons.cart,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                      if (_getCartTotalCount() > 0)
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 8,
+                              minHeight: 8,
+                            ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-                onPressed: _getCartTotalCount() > 0 ? _showCartSheet : null,
-              ),
+                    ],
+                  ),
+                  onPressed: _getCartTotalCount() > 0 ? _showCartSheet : null,
+                );
+              }),
               const SizedBox(width: 8),
             ],
           ),
-        ],
-        body: _storeId == null
-            ? const Center(child: CircularProgressIndicator())
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWideScreen = constraints.maxWidth >= 720;
+      body: _storeId == null
+          ? const Center(child: CircularProgressIndicator())
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final isWideScreen = constraints.maxWidth >= 720;
 
-                  if (isWideScreen) {
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Persistent Side Navigation - Only if standalone
-                        if (widget.showSidebar && !_isPaymentFullscreen)
-                          const KasirSideNavigation(currentRoute: '/kasir'),
+                if (isWideScreen) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Persistent Side Navigation - Only if standalone
+                      if (widget.showSidebar && !_isPaymentFullscreen)
+                        const KasirSideNavigation(currentRoute: '/kasir'),
 
-                        // Main Content
-                        if (!_isPaymentFullscreen)
-                          Expanded(
-                            flex: 7,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                /* Redundant Header Removed */
-
-                                // Explore Categories
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    24,
-                                    20,
-                                    24,
-                                    12,
-                                  ),
-                                  child: Text(
-                                    "Explore Categories",
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: isDark
-                                          ? Colors.white
-                                          : const Color(0xFF2D3436),
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  height: 100,
-                                  child: ListView.builder(
-                                    scrollDirection: Axis.horizontal,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 24,
-                                    ),
-                                    itemCount: _categories.length,
-                                    itemBuilder: (context, index) {
-                                      final cat = _categories[index];
-                                      final isSelected = _selectedCategory == cat;
-                                      return CategoryIconCard(
-                                        label: cat,
-                                        isSelected: isSelected,
-                                        onTap: () {
-                                          setState(
-                                            () => _selectedCategory = isSelected
-                                                ? "Semua"
-                                                : cat,
+                      // Main Content
+                      if (!_isPaymentFullscreen)
+                        Expanded(
+                          flex: 7,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Search and Toggle Row
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: BigSearchBar(
+                                        controller: _searchController,
+                                        hintText: "Cari menu atau Scan SKU...",
+                                        onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
+                                        onSubmitted: (val) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('Mari cari produk...')),
                                           );
                                         },
-                                      );
-                                    },
-                                  ),
-                                ),
-
-                                // Product Filter Tabs (Popular/Recent)
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    24,
-                                    24,
-                                    24,
-                                    8,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      _buildFilterTab(
-                                        "Popular",
-                                        _selectedFilter == "Popular",
+                                        onClear: () {
+                                          setState(() {
+                                            _searchController.clear();
+                                            _searchQuery = "";
+                                          });
+                                        },
                                       ),
-                                      const SizedBox(width: 24),
-                                      _buildFilterTab(
-                                        "Recent",
-                                        _selectedFilter == "Recent",
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        color: isDark ? Colors.white10 : Colors.white,
+                                        borderRadius: BorderRadius.circular(15),
+                                        border: Border.all(
+                                          color: isDark ? Colors.white10 : Colors.grey[200]!,
+                                        ),
                                       ),
-                                    ],
-                                  ),
+                                      child: IconButton(
+                                        icon: Icon(
+                                          _isGridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
+                                          color: isDark ? Colors.white : Colors.black87,
+                                        ),
+                                        onPressed: () {
+                                          final newValue = !_isGridView;
+                                          setState(() => _isGridView = newValue);
+                                          SettingsController.instance.setGridView(newValue);
+                                        },
+                                        tooltip: _isGridView ? "Tampilan List" : "Tampilan Grid",
+                                      ),
+                                    ),
+                                  ],
                                 ),
+                              ),
 
-                                Expanded(
-                                  child: ProductGrid(
-                                    storeId: _storeId!,
-                                    searchQuery: _searchQuery,
-                                    categoryFilter: _selectedCategory == "Semua"
-                                        ? "Semua"
-                                        : _categoryMap[_selectedCategory],
-                                    filterType:
-                                        _selectedFilter, // Need to implement this in ProductGrid
-                                    isGridView: _isGridView,
-                                    onItemTap: (Product product) {
-                                      _handleProductSelection(product);
-                                      setState(() {});
-                                    },
-                                    actionBuilder: (context, Product p) =>
-                                        _buildActionIcon(p),
+                              // Products Filter and Categories logic
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                height: 100,
+                                child: ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
                                   ),
+                                  itemCount: _categories.length,
+                                  itemBuilder: (context, index) {
+                                    final cat = _categories[index];
+                                    final isSelected = _selectedCategory == cat;
+                                    return CategoryIconCard(
+                                      label: cat,
+                                      isSelected: isSelected,
+                                      onTap: () {
+                                        setState(
+                                          () => _selectedCategory = isSelected
+                                              ? "Semua"
+                                              : cat,
+                                        );
+                                      },
+                                    );
+                                  },
                                 ),
-                              ],
+                              ),
+
+                              // Product Filter Tabs (Popular/Recent)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  24,
+                                  24,
+                                  24,
+                                  8,
+                                ),
+                                child: Row(
+                                  children: [
+                                    _buildFilterTab(
+                                      "Popular",
+                                      _selectedFilter == "Popular",
+                                    ),
+                                    const SizedBox(width: 24),
+                                    _buildFilterTab(
+                                      "Recent",
+                                      _selectedFilter == "Recent",
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              Expanded(
+                                child: ProductGrid(
+                                  storeId: _storeId!,
+                                  searchQuery: _searchQuery,
+                                  categoryFilter: _selectedCategory == "Semua"
+                                      ? "Semua"
+                                      : _categoryMap[_selectedCategory],
+                                  filterType:
+                                      _selectedFilter, // Need to implement this in ProductGrid
+                                  isGridView: _isGridView,
+                                  onItemTap: (Product product) {
+                                    _handleProductSelection(product);
+                                    setState(() {});
+                                  },
+                                  actionBuilder: (context, Product p) =>
+                                      _buildActionIcon(p),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      // Right Side (Invoice Sidebar - Smoother)
+                      Expanded(
+                        flex: _isPaymentFullscreen ? 1 : 3,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            border: Border(
+                              left: BorderSide(
+                                color: isDark ? Colors.white10 : Colors.grey[200]!,
+                              ),
                             ),
                           ),
-                        // Right Side (Invoice Sidebar - Smoother)
-                        Expanded(
-                          flex: _isPaymentFullscreen ? 1 : 3,
                           child: CartSidebar(
+                            searchController: _searchController,
+                            onSearchChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
+                            onSearchSubmitted: _searchAndAddBySku,
+                            onSearchClear: () {
+                              setState(() {
+                                _searchController.clear();
+                                _searchQuery = "";
+                              });
+                            },
                             cartItems: _cartItems,
                             isProcessing: _isProcessing,
                             discountData: _discountData,
+                            isGridView: _isGridView,
+                            onToggleGrid: () {
+                              final newValue = !_isGridView;
+                              setState(() => _isGridView = newValue);
+                              SettingsController.instance.setGridView(newValue);
+                            },
                             onModeChanged: (isPayment) {
                               setState(() => _isPaymentFullscreen = isPayment);
                             },
@@ -664,15 +699,56 @@ class _KasirPageState extends State<KasirPage> {
                             },
                           ),
                         ),
-                      ],
-                    );
-                  }
+                      ),
+                    ],
+                  );
+                }
 
                   // Mobile Layout
                   return Stack(
                     children: [
                       Column(
                         children: [
+                          // Search and Toggle (Mobile)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: BigSearchBar(
+                                    controller: _searchController,
+                                    hintText: "Cari menu...",
+                                    onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
+                                    onClear: () {
+                                      setState(() {
+                                        _searchController.clear();
+                                        _searchQuery = "";
+                                      });
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: isDark ? Colors.white10 : Colors.grey[100],
+                                    borderRadius: BorderRadius.circular(15),
+                                  ),
+                                  child: IconButton(
+                                    icon: Icon(
+                                      _isGridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
+                                      color: isDark ? Colors.white : Colors.black87,
+                                      size: 20,
+                                    ),
+                                    onPressed: () {
+                                      final newValue = !_isGridView;
+                                      setState(() => _isGridView = newValue);
+                                      SettingsController.instance.setGridView(newValue);
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                           // Categories
                           SizedBox(
                             height: 60,
@@ -814,8 +890,7 @@ class _KasirPageState extends State<KasirPage> {
                     ],
                   );
                 },
-              ),
-      ),
+            ),
     );
   }
 
@@ -923,6 +998,22 @@ class _KasirPageState extends State<KasirPage> {
                 top: Radius.circular(24),
               ),
               child: CartSidebar(
+                searchController: _searchController,
+                onSearchChanged: (val) => setState(() {
+                  _searchQuery = val.toLowerCase();
+                  setSheetState(() {});
+                }),
+                onSearchSubmitted: (val) {
+                  _searchAndAddBySku(val);
+                  setSheetState(() {});
+                },
+                onSearchClear: () {
+                  setState(() {
+                    _searchController.clear();
+                    _searchQuery = "";
+                  });
+                  setSheetState(() {});
+                },
                 cartItems: _cartItems,
                 isProcessing: _isProcessing,
                 discountData: _discountData,
