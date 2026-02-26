@@ -275,7 +275,7 @@ class _AttendancePageState extends State<AttendancePage> {
       backgroundColor: bgColor,
       extendBodyBehindAppBar: true,
       drawer: widget.showSidebar
-          ? KasirDrawer(currentRoute: '/attendance')
+          ? const KasirDrawer(currentRoute: '/attendance')
           : null,
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -363,7 +363,7 @@ class _AttendancePageState extends State<AttendancePage> {
           if (isWideScreen && widget.showSidebar) {
             return Row(
               children: [
-                KasirSideNavigation(currentRoute: '/attendance'),
+                const KasirSideNavigation(currentRoute: '/attendance'),
                 Expanded(child: content),
               ],
             );

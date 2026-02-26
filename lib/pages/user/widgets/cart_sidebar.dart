@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
-import '../../../services/platform/file_manager.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../services/app_database.dart';
-import '../../../widgets/custom_numpad.dart';
 import '../../../widgets/order_numpad.dart';
-import '../../../widgets/big_search_bar.dart';
 
 class CartSidebar extends StatefulWidget {
   final List<Map<String, dynamic>> cartItems;
@@ -15,6 +12,7 @@ class CartSidebar extends StatefulWidget {
   final Function(Product product, {List? options, String? notes, double? price})
   onAddItem;
   final Function(double cashReceived, String paymentMethod) onCheckout;
+  final VoidCallback? onAbortTransaction;
   final Function(bool isPaymentMode)? onModeChanged;
   final bool isProcessing;
   final TextEditingController? searchController;
@@ -38,6 +36,7 @@ class CartSidebar extends StatefulWidget {
     required this.onRemoveItem,
     required this.onAddItem,
     required this.onCheckout,
+    this.onAbortTransaction,
     this.isGridView = true,
     this.onToggleGrid,
   });
@@ -54,7 +53,8 @@ class _CartSidebarState extends State<CartSidebar> {
   int _selectedItemIndex = -1; // Added for Odoo selection
   OrderNumpadMode _numpadMode = OrderNumpadMode.qty;
   String _numpadBuffer = "";
-  bool _isFirstInput = true; // Flag for flexible "overwrite on first digit" logic
+  bool _isFirstInput =
+      true; // Flag for flexible "overwrite on first digit" logic
 
   final _currencyFormat = NumberFormat.currency(
     locale: 'id',
@@ -84,7 +84,9 @@ class _CartSidebarState extends State<CartSidebar> {
       }
     } else if (val == ".") {
       // Decimal support if needed, though rare for IDR cash
-      if (!rawValue.contains(".") && rawValue.length < 11 && rawValue.isNotEmpty) {
+      if (!rawValue.contains(".") &&
+          rawValue.length < 11 &&
+          rawValue.isNotEmpty) {
         rawValue += ".";
       }
     } else {
@@ -98,24 +100,29 @@ class _CartSidebarState extends State<CartSidebar> {
       _cashController.text = "";
     } else {
       _cashReceived = double.tryParse(rawValue) ?? 0;
-      _cashController.text = NumberFormat.decimalPattern('id').format(_cashReceived);
+      _cashController.text = NumberFormat.decimalPattern(
+        'id',
+      ).format(_cashReceived);
     }
     setState(() {});
   }
 
   void _handleOrderNumpadTap(String val) {
-    if (_selectedItemIndex == -1 || _selectedItemIndex >= widget.cartItems.length) return;
+    if (_selectedItemIndex == -1 ||
+        _selectedItemIndex >= widget.cartItems.length) {
+      return;
+    }
 
     if (val == "C") {
       _numpadBuffer = "";
       _isFirstInput = true;
     } else if (val == "000") {
-       if (_isFirstInput) {
-         _numpadBuffer = "0";
-         _isFirstInput = false;
-       } else {
-         _numpadBuffer += "000";
-       }
+      if (_isFirstInput) {
+        _numpadBuffer = "0";
+        _isFirstInput = false;
+      } else {
+        _numpadBuffer += "000";
+      }
     } else if (val == ".") {
       if (_isFirstInput) {
         _numpadBuffer = "0.";
@@ -136,37 +143,84 @@ class _CartSidebarState extends State<CartSidebar> {
   }
 
   void _handleOrderNumpadBackspace() {
+    if (_selectedItemIndex == -1 ||
+        _selectedItemIndex >= widget.cartItems.length) {
+      return;
+    }
+
     if (_numpadBuffer.isNotEmpty) {
+      // Remove last digit from buffer
       _numpadBuffer = _numpadBuffer.substring(0, _numpadBuffer.length - 1);
       if (_numpadBuffer.isEmpty) _isFirstInput = true;
       _applyNumpadValue();
+    } else {
+      // Buffer is empty — decrement quantity directly by 1
+      if (_numpadMode == OrderNumpadMode.qty) {
+        final item = widget.cartItems[_selectedItemIndex];
+        final currentQty = (item['quantity'] as int).clamp(0, 999);
+        final newQty = (currentQty - 1).clamp(0, 999);
+        setState(() {
+          item['quantity'] = newQty;
+          // Remove item if qty hits 0
+          widget.cartItems.removeWhere((i) => (i['quantity'] as int) == 0);
+          _selectedItemIndex = -1;
+          _numpadBuffer = '';
+          _isFirstInput = true;
+        });
+
+        if (widget.cartItems.isEmpty && mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) Navigator.pop(context);
+          });
+        }
+      }
     }
   }
 
   void _handleOrderNumpadToggleSign() {
-     if (_numpadBuffer.startsWith("-")) {
-       _numpadBuffer = _numpadBuffer.substring(1);
-     } else if (_numpadBuffer.isNotEmpty) {
-       _numpadBuffer = "-$_numpadBuffer";
-     }
-     _applyNumpadValue();
+    if (_numpadBuffer.startsWith("-")) {
+      _numpadBuffer = _numpadBuffer.substring(1);
+    } else if (_numpadBuffer.isNotEmpty) {
+      _numpadBuffer = "-$_numpadBuffer";
+    }
+    _applyNumpadValue();
   }
 
   void _applyNumpadValue() {
-    if (_selectedItemIndex == -1) return;
-    
+    if (_selectedItemIndex == -1) {
+      return;
+    }
+
     final item = widget.cartItems[_selectedItemIndex];
     double val = double.tryParse(_numpadBuffer) ?? 0;
 
-    setState(() {
-      if (_numpadMode == OrderNumpadMode.qty) {
-        item['quantity'] = val.toInt().clamp(0, 999); // Allow 0 for deletion/clearing?
-      } else if (_numpadMode == OrderNumpadMode.disc) {
-        // Handle discount if field exists, otherwise ignore or implement
-      } else if (_numpadMode == OrderNumpadMode.price) {
+    if (_numpadMode == OrderNumpadMode.qty) {
+      final newQty = val.toInt().clamp(0, 999);
+      setState(() {
+        item['quantity'] = newQty;
+      });
+
+      // Remove items with qty = 0
+      setState(() {
+        widget.cartItems.removeWhere((i) => (i['quantity'] as int) == 0);
+        _selectedItemIndex = -1;
+        _numpadBuffer = '';
+        _isFirstInput = true;
+      });
+    } else if (_numpadMode == OrderNumpadMode.disc) {
+      // Handle discount if field exists
+    } else if (_numpadMode == OrderNumpadMode.price) {
+      setState(() {
         item['price'] = val;
-      }
-    });
+      });
+    }
+
+    // If cart is now empty, close the sheet
+    if (widget.cartItems.isEmpty && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.pop(context);
+      });
+    }
   }
 
   int _getCartTotalCount() {
@@ -181,7 +235,7 @@ class _CartSidebarState extends State<CartSidebar> {
     super.didUpdateWidget(oldWidget);
     // If cart is empty and we are still in payment mode, auto-reset to cart view
     if (widget.cartItems.isEmpty && _isPaymentMode) {
-      // Use post-frame callback to avoid setState() during build error 
+      // Use post-frame callback to avoid setState() during build error
       // when notifying parent about mode change
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -218,29 +272,40 @@ class _CartSidebarState extends State<CartSidebar> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isDesktop = constraints.maxWidth >= 380 || MediaQuery.of(context).size.width >= 720;
-        
-        // On desktop, we hide the "Next to Payment" button and can auto-show payment details
-        // if the user wants it to be faster. 
-        
+        final isDesktop =
+            constraints.maxWidth >= 600 ||
+            MediaQuery.of(context).size.width >= 720;
+
         return Container(
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF8F9FA),
             border: Border(
-              left: BorderSide(color: isDark ? Colors.white10 : Colors.grey[200]!),
+              left: BorderSide(
+                color: isDark ? Colors.white10 : Colors.grey[200]!,
+              ),
             ),
           ),
-          child: Column(
-            children: [
-              _buildHeader(isDark, primaryColor, isDesktop),
-              Expanded(
-                child: _isPaymentMode
-                    ? _buildPaymentView(isDark, primaryColor, subTotal, discount, total, change, isDesktop)
-                    : _buildCartView(isDark, primaryColor, total, isDesktop),
-              ),
-              // Only show the floating bottom action if we are NOT in payment mode OR NOT using Tunai (which has its own keyboard)
-              // This is now handled more cleanly within the views or at the bottom of the column
-            ],
+          child: SafeArea(
+            top: !isDesktop,
+            bottom: !isDesktop,
+            child: Column(
+              children: [
+                _buildHeader(isDark, primaryColor, isDesktop),
+                Expanded(
+                  child: _isPaymentMode
+                      ? _buildPaymentView(
+                          isDark,
+                          primaryColor,
+                          subTotal,
+                          discount,
+                          total,
+                          change,
+                          isDesktop,
+                        )
+                      : _buildCartView(isDark, primaryColor, total, isDesktop),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -249,7 +314,7 @@ class _CartSidebarState extends State<CartSidebar> {
 
   Widget _buildHeader(bool isDark, Color primaryColor, bool isDesktop) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(24, isDesktop ? 0 : 8, 24, 16),
+      padding: EdgeInsets.fromLTRB(24, isDesktop ? 24 : 16, 24, 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -298,7 +363,12 @@ class _CartSidebarState extends State<CartSidebar> {
     );
   }
 
-  Widget _buildCartView(bool isDark, Color primaryColor, double total, bool isDesktop) {
+  Widget _buildCartView(
+    bool isDark,
+    Color primaryColor,
+    double total,
+    bool isDesktop,
+  ) {
     if (widget.cartItems.isEmpty) {
       return Center(
         child: Column(
@@ -334,6 +404,14 @@ class _CartSidebarState extends State<CartSidebar> {
               final price = item['price'] as double;
               final isSelected = _selectedItemIndex == i;
 
+              final appliedIds =
+                  widget.discountData?['applied_cart_ids'] as List? ?? [];
+              final itemDiscounts =
+                  widget.discountData?['item_discounts'] as Map? ?? {};
+              final isPromo = appliedIds.contains(item['cart_id']);
+              final itemDiscount =
+                  itemDiscounts[item['cart_id']] as double? ?? 0.0;
+
               return InkWell(
                 onTap: () {
                   setState(() {
@@ -362,23 +440,6 @@ class _CartSidebarState extends State<CartSidebar> {
                   ),
                   child: Row(
                     children: [
-                      if (!isDesktop) ...[
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            width: 56,
-                            height: 56,
-                            color: isDark ? Colors.white10 : Colors.grey[100],
-                            child: p.imageUrl != null
-                                ? Image(
-                                    image: FileManager().getImageProvider(p.imageUrl!),
-                                    fit: BoxFit.cover,
-                                  )
-                                : Icon(Icons.fastfood, color: Colors.grey[400]),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                      ],
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -394,13 +455,45 @@ class _CartSidebarState extends State<CartSidebar> {
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              "$qty x ${_currencyFormat.format(price)}",
-                              style: GoogleFonts.inter(
-                                fontSize: isDesktop ? 12 : 13,
-                                color: isSelected ? primaryColor : Colors.grey,
-                                fontWeight: FontWeight.w600,
-                              ),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                Text(
+                                  "$qty x ${_currencyFormat.format(price)}",
+                                  style: GoogleFonts.inter(
+                                    fontSize: isDesktop ? 12 : 13,
+                                    color: isSelected
+                                        ? primaryColor
+                                        : Colors.grey,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                if (isPromo)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.withValues(
+                                        alpha: 0.1,
+                                      ),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      itemDiscount > 0
+                                          ? "PROMO -${_currencyFormat.format(itemDiscount)}"
+                                          : "PROMO",
+                                      style: GoogleFonts.inter(
+                                        color: Colors.green,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ],
                         ),
@@ -447,26 +540,69 @@ class _CartSidebarState extends State<CartSidebar> {
   }
 
   Widget _buildCartActionButton(Color primaryColor, double total) {
+    final totalQty = _getCartTotalCount();
+    final hasItems = widget.cartItems.isNotEmpty && totalQty > 0;
+
     return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: SizedBox(
-        width: double.infinity,
-        height: 56,
-        child: ElevatedButton(
-          onPressed: widget.cartItems.isEmpty 
-            ? null 
-            : () => setState(() => _isPaymentMode = true),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: primaryColor,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 0,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      child: Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              onPressed: hasItems
+                  ? () => setState(() => _isPaymentMode = true)
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: Colors.grey[300],
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+              child: Text(
+                "Go to Payment",
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
           ),
-          child: Text(
-            "Go to Payment",
-            style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 18),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                widget.onAbortTransaction?.call();
+                Navigator.pop(context);
+              },
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                size: 18,
+                color: Colors.redAccent,
+              ),
+              label: Text(
+                "Batalkan Transaksi",
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  color: Colors.redAccent,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.redAccent),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -474,14 +610,15 @@ class _CartSidebarState extends State<CartSidebar> {
   Widget _buildOdooSummary(bool isDark, Color primaryColor) {
     double subTotal = widget.cartItems.fold(
       0,
-      (sum, item) => sum + ((item['price'] as double) * (item['quantity'] as int)),
+      (sum, item) =>
+          sum + ((item['price'] as double) * (item['quantity'] as int)),
     );
     double discount = widget.discountData?['total_discount'] ?? 0.0;
     double total = subTotal - discount;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      color: isDark ? Colors.white.withOpacity(0.02) : Colors.grey[50],
+      color: isDark ? Colors.white.withValues(alpha: 0.02) : Colors.grey[50],
       child: Column(
         children: [
           Row(
@@ -496,7 +633,7 @@ class _CartSidebarState extends State<CartSidebar> {
                   Text(
                     "Total",
                     style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.bold, 
+                      fontWeight: FontWeight.bold,
                       fontSize: 14,
                       color: isDark ? Colors.white70 : Colors.black54,
                     ),
@@ -515,7 +652,7 @@ class _CartSidebarState extends State<CartSidebar> {
               Text(
                 _currencyFormat.format(total),
                 style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.bold, 
+                  fontWeight: FontWeight.bold,
                   fontSize: 18,
                   color: primaryColor,
                 ),
@@ -563,11 +700,20 @@ class _CartSidebarState extends State<CartSidebar> {
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              _buildPaymentMethodIcon("Tunai", Icons.payments_outlined),
+                              _buildPaymentMethodIcon(
+                                "Tunai",
+                                Icons.payments_outlined,
+                              ),
                               const SizedBox(width: 8),
-                              _buildPaymentMethodIcon("QRIS", Icons.qr_code_scanner),
+                              _buildPaymentMethodIcon(
+                                "QRIS",
+                                Icons.qr_code_scanner,
+                              ),
                               const SizedBox(width: 8),
-                              _buildPaymentMethodIcon("Transfer", Icons.account_balance_wallet),
+                              _buildPaymentMethodIcon(
+                                "Transfer",
+                                Icons.account_balance_wallet,
+                              ),
                             ],
                           ),
                         ],
@@ -597,7 +743,10 @@ class _CartSidebarState extends State<CartSidebar> {
                           decoration: InputDecoration(
                             hintText: "0",
                             prefixIcon: Padding(
-                              padding: const EdgeInsets.only(left: 18, right: 4),
+                              padding: const EdgeInsets.only(
+                                left: 18,
+                                right: 4,
+                              ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -616,17 +765,27 @@ class _CartSidebarState extends State<CartSidebar> {
                             isDense: true,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(15),
-                              borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                              borderSide: BorderSide(
+                                color: Colors.grey.withValues(alpha: 0.2),
+                              ),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(15),
-                              borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                              borderSide: BorderSide(
+                                color: Colors.grey.withValues(alpha: 0.2),
+                              ),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(15),
-                              borderSide: BorderSide(color: primaryColor, width: 2),
+                              borderSide: BorderSide(
+                                color: primaryColor,
+                                width: 2,
+                              ),
                             ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 14,
+                            ),
                             suffixIcon: IconButton(
                               icon: const Icon(Icons.clear, size: 24),
                               onPressed: () {
@@ -660,14 +819,16 @@ class _CartSidebarState extends State<CartSidebar> {
             ),
           ),
         ),
-        
+
         // Fixed Summary, Numpad and Button at the bottom (Symmetrical with Cart Mode)
         const Divider(height: 1),
-        
+
         // Payment Summary Section (Reusing similar style as OdooSummary)
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          color: isDark ? Colors.white.withOpacity(0.02) : Colors.grey[50],
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.02)
+              : Colors.grey[50],
           child: Column(
             children: [
               Row(
@@ -676,7 +837,7 @@ class _CartSidebarState extends State<CartSidebar> {
                   Text(
                     "Total Bayar",
                     style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.bold, 
+                      fontWeight: FontWeight.bold,
                       fontSize: 14,
                       color: isDark ? Colors.white70 : Colors.black54,
                     ),
@@ -684,7 +845,7 @@ class _CartSidebarState extends State<CartSidebar> {
                   Text(
                     _currencyFormat.format(total),
                     style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.bold, 
+                      fontWeight: FontWeight.bold,
                       fontSize: 18,
                       color: primaryColor,
                     ),
@@ -740,7 +901,8 @@ class _CartSidebarState extends State<CartSidebar> {
               onPressed: widget.isProcessing
                   ? null
                   : () {
-                      if (_selectedPaymentMethod == "Tunai" && _cashReceived < total) {
+                      if (_selectedPaymentMethod == "Tunai" &&
+                          _cashReceived < total) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text("Uang kurang"),
@@ -755,127 +917,24 @@ class _CartSidebarState extends State<CartSidebar> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryColor,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 elevation: 0,
               ),
               child: widget.isProcessing
                   ? const CircularProgressIndicator(color: Colors.white)
                   : Text(
                       "Konfirmasi Pembayaran",
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 18),
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
                     ),
             ),
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildBottomAction(Color primaryColor, double total) {
-    // Hide bottom button on payment screen if using Tunai (keyboard has its own button)
-    if (_isPaymentMode && _selectedPaymentMethod == "Tunai") {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).brightness == Brightness.dark
-            ? const Color(0xFF1A1A1A)
-            : Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          width: double.infinity,
-          height: 60,
-          child: ElevatedButton(
-            onPressed: widget.cartItems.isEmpty
-                ? null
-                : (_isPaymentMode
-                    ? ((widget.isProcessing ||
-                            (_selectedPaymentMethod == "Tunai" && _cashReceived < total))
-                        ? null
-                        : () => widget.onCheckout(_cashReceived, _selectedPaymentMethod))
-                    : () {
-                        setState(() => _isPaymentMode = true);
-                        widget.onModeChanged?.call(true);
-                      }),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primaryColor,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-              elevation: 0,
-            ),
-            child: widget.isProcessing
-                ? const CircularProgressIndicator(color: Colors.white)
-                : Text(
-                    _isPaymentMode ? "Konfirmasi Pembayaran" : "Lanjut ke Pembayaran",
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQtyBtn(IconData icon, VoidCallback onTap) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: isDark ? Colors.white10 : Colors.grey[100],
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(
-          icon,
-          size: 14,
-          color: isDark ? Colors.white70 : Colors.black87,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSummaryLine(
-    String label,
-    double amount, {
-    bool isNegative = false,
-    bool isSmall = false,
-  }) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: isSmall ? 2 : 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              color: Colors.grey[600],
-              fontSize: isSmall ? 10 : 12,
-            ),
-          ),
-          Text(
-            (isNegative ? "- " : "") + _currencyFormat.format(amount),
-            style: GoogleFonts.inter(
-              fontWeight: FontWeight.w600,
-              fontSize: isSmall ? 11 : 13,
-              color: isNegative ? Colors.green : null,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -888,9 +947,13 @@ class _CartSidebarState extends State<CartSidebar> {
         width: 50,
         height: 40,
         decoration: BoxDecoration(
-          color: isSelected ? primaryColor.withValues(alpha: 0.1) : Colors.transparent,
+          color: isSelected
+              ? primaryColor.withValues(alpha: 0.1)
+              : Colors.transparent,
           border: Border.all(
-            color: isSelected ? primaryColor : Colors.grey.withValues(alpha: 0.2),
+            color: isSelected
+                ? primaryColor
+                : Colors.grey.withValues(alpha: 0.2),
             width: 1.5,
           ),
           borderRadius: BorderRadius.circular(10),
@@ -908,11 +971,16 @@ class _CartSidebarState extends State<CartSidebar> {
     return Padding(
       padding: const EdgeInsets.only(right: 4),
       child: ActionChip(
-        label: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+        label: Text(
+          label,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+        ),
         onPressed: () {
           setState(() {
             _cashReceived = amount;
-            _cashController.text = NumberFormat.decimalPattern('id').format(amount);
+            _cashController.text = NumberFormat.decimalPattern(
+              'id',
+            ).format(amount);
           });
         },
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

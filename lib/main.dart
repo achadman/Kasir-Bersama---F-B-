@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'pages/auth/login_page.dart';
 import 'pages/admin/laporan_page.dart';
 import 'pages/admin/admin_page.dart';
-import 'pages/user/kasir_page.dart';
 import 'pages/user/kasir_main_page.dart';
 import 'pages/auth/onboarding_page.dart';
 import 'pages/auth/register_page.dart';
@@ -27,7 +26,6 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'services/bluetooth_printer_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/app_database.dart';
-import 'services/google_drive_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,9 +57,6 @@ void main() async {
 
   // Initialize Bluetooth Printer
   await BluetoothPrinterService().init();
-
-  // Initialize Google Drive Service
-  await GoogleDriveService().init();
 
   runApp(
     Provider<AppDatabase>(

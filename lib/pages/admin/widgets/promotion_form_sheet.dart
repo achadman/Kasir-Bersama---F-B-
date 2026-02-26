@@ -17,24 +17,42 @@ class _PromotionFormSheetState extends State<PromotionFormSheet> {
   final _nameController = TextEditingController();
   final _descController = TextEditingController();
   final _valueController = TextEditingController();
+  final _durationController = TextEditingController();
 
   String _promoType = 'discount'; // discount, buy_x_get_y, bundle
   String _discountUnit = 'percentage'; // percentage, fixed
   List<String> _selectedCategoryIds = [];
 
   bool _isLoading = false;
+  bool _hasDuration = false; // Toggle for duration field
 
   @override
   void initState() {
     super.initState();
     if (widget.existingPromo != null) {
-      _nameController.text = widget.existingPromo!.name ?? '';
-      _descController.text = widget.existingPromo!.description ?? '';
-      _valueController.text = widget.existingPromo!.value?.toString() ?? '';
-      _promoType = widget.existingPromo!.type;
-      _discountUnit = widget.existingPromo!.discountType;
-      // Loading items would require another query
+      final p = widget.existingPromo!;
+      _nameController.text = p.name ?? '';
+      _descController.text = p.description ?? '';
+      _valueController.text = p.value?.toString() ?? '';
+      _promoType = p.type;
+      _discountUnit = p.discountType;
+
+      // Pre-populate duration if endDate exists
+      if (p.endDate != null) {
+        _hasDuration = true;
+        final daysLeft = p.endDate!.difference(DateTime.now()).inDays;
+        _durationController.text = daysLeft > 0 ? daysLeft.toString() : '0';
+      }
     }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descController.dispose();
+    _valueController.dispose();
+    _durationController.dispose();
+    super.dispose();
   }
 
   @override
@@ -43,7 +61,7 @@ class _PromotionFormSheetState extends State<PromotionFormSheet> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      height: MediaQuery.of(context).size.height * 0.9,
+      height: MediaQuery.of(context).size.height * 0.92,
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -60,7 +78,7 @@ class _PromotionFormSheetState extends State<PromotionFormSheet> {
                   _buildTextField(
                     controller: _nameController,
                     label: 'Nama Promosi',
-                    hint: 'Contoh: Diskon Kemerdekaan',
+                    hint: 'Contoh: Diskon Ramadhan',
                     validator: (v) => v!.isEmpty ? 'Nama wajib diisi' : null,
                   ),
                   const SizedBox(height: 20),
@@ -90,7 +108,9 @@ class _PromotionFormSheetState extends State<PromotionFormSheet> {
                           child: _buildTextField(
                             controller: _valueController,
                             label: 'Nilai Diskon',
-                            hint: _discountUnit == 'percentage' ? '10' : '5000',
+                            hint: _discountUnit == 'percentage'
+                                ? 'Masukkan jumlah diskon, contoh: 10'
+                                : 'Masukkan nominal, contoh: 5000',
                             keyboardType: TextInputType.number,
                             prefixIcon: Icon(
                               _discountUnit == 'percentage'
@@ -98,6 +118,20 @@ class _PromotionFormSheetState extends State<PromotionFormSheet> {
                                   : Icons.money_off_csred_rounded,
                               size: 18,
                             ),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
+                                return 'Nilai diskon wajib diisi';
+                              }
+                              final parsed = double.tryParse(v.trim());
+                              if (parsed == null || parsed <= 0) {
+                                return 'Masukkan angka yang valid';
+                              }
+                              if (_discountUnit == 'percentage' &&
+                                  parsed > 100) {
+                                return 'Max 100%';
+                              }
+                              return null;
+                            },
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -146,6 +180,51 @@ class _PromotionFormSheetState extends State<PromotionFormSheet> {
                       'Fitur Paket (Bundling) akan segera hadir dalam update berikutnya.',
                     ),
                   ],
+
+                  const SizedBox(height: 24),
+                  const Divider(),
+                  const SizedBox(height: 16),
+
+                  // --- Duration Section ---
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Durasi Promosi',
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          Text(
+                            'Promosi akan otomatis berakhir',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                        ],
+                      ),
+                      Switch.adaptive(
+                        value: _hasDuration,
+                        onChanged: (v) => setState(() {
+                          _hasDuration = v;
+                          if (!v) _durationController.clear();
+                        }),
+                        activeTrackColor: Theme.of(context).primaryColor,
+                      ),
+                    ],
+                  ),
+
+                  if (_hasDuration) ...[
+                    const SizedBox(height: 16),
+                    _buildDurationField(),
+                  ],
+
+                  const SizedBox(height: 32),
                 ],
               ),
             ),
@@ -153,6 +232,108 @@ class _PromotionFormSheetState extends State<PromotionFormSheet> {
           _buildFooter(context, controller),
         ],
       ),
+    );
+  }
+
+  Widget _buildDurationField() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Berapa hari promosi berlangsung?',
+          style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: _durationController,
+                keyboardType: TextInputType.number,
+                validator: _hasDuration
+                    ? (v) {
+                        if (v == null || v.trim().isEmpty) {
+                          return 'Masukkan jumlah hari';
+                        }
+                        final days = int.tryParse(v.trim());
+                        if (days == null || days <= 0) {
+                          return 'Minimal 1 hari';
+                        }
+                        return null;
+                      }
+                    : null,
+                decoration: InputDecoration(
+                  hintText: 'Contoh: 30',
+                  suffixText: 'hari',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  contentPadding: const EdgeInsets.all(16),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Quick duration chips
+        Wrap(
+          spacing: 8,
+          children: [7, 14, 30, 60, 90].map((days) {
+            return ActionChip(
+              label: Text('$days hari', style: GoogleFonts.inter(fontSize: 12)),
+              backgroundColor: isDark
+                  ? Colors.white10
+                  : Theme.of(context).primaryColor.withValues(alpha: 0.08),
+              onPressed: () =>
+                  setState(() => _durationController.text = '$days'),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 8),
+        if (_durationController.text.isNotEmpty) ...[
+          Builder(
+            builder: (context) {
+              final days = int.tryParse(_durationController.text) ?? 0;
+              if (days <= 0) return const SizedBox();
+              final endDate = DateTime.now().add(Duration(days: days));
+              final formatted =
+                  '${endDate.day}/${endDate.month}/${endDate.year}';
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.green.withValues(alpha: 0.2),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.event_available,
+                      color: Colors.green,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Berakhir pada: $formatted',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: Colors.green[700],
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ],
     );
   }
 
@@ -203,7 +384,7 @@ class _PromotionFormSheetState extends State<PromotionFormSheet> {
               fontSize: 16,
             ),
           ),
-          const SizedBox(width: 60), // Spacer
+          const SizedBox(width: 60),
         ],
       ),
     );
@@ -231,6 +412,7 @@ class _PromotionFormSheetState extends State<PromotionFormSheet> {
           maxLines: maxLines,
           keyboardType: keyboardType,
           validator: validator,
+          onChanged: (_) => setState(() {}), // Refresh end-date preview
           decoration: InputDecoration(
             hintText: hint,
             prefixIcon: prefixIcon,
@@ -508,7 +690,18 @@ class _PromotionFormSheetState extends State<PromotionFormSheet> {
     setState(() => _isLoading = true);
 
     try {
-      final value = double.tryParse(_valueController.text);
+      final value = double.tryParse(_valueController.text.trim());
+
+      // Build start/end dates from duration
+      DateTime? startDate;
+      DateTime? endDate;
+      if (_hasDuration) {
+        final days = int.tryParse(_durationController.text.trim()) ?? 0;
+        if (days > 0) {
+          startDate = DateTime.now();
+          endDate = startDate.add(Duration(days: days));
+        }
+      }
 
       List<Map<String, dynamic>> items = [];
       for (var id in _selectedCategoryIds) {
@@ -523,6 +716,8 @@ class _PromotionFormSheetState extends State<PromotionFormSheet> {
         value: value,
         storeId: controller.storeId!,
         items: items,
+        startDate: startDate,
+        endDate: endDate,
       );
 
       if (mounted) {

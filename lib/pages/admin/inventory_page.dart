@@ -494,6 +494,8 @@ class _InventoryPageState extends State<InventoryPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryOrange = const Color(0xFFEA5700);
+
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
@@ -543,87 +545,101 @@ class _InventoryPageState extends State<InventoryPage> {
         ),
         automaticallyImplyLeading: false,
         actions: [
-          if (_stockFilter == 'limited') ...[
-            IconButton(
-              icon: const Icon(Icons.delete_sweep_rounded, color: Colors.red),
-              onPressed: () => _emptyAllStock(),
-              tooltip: "Kosongkan Stok",
-            ),
-            IconButton(
-              icon: const Icon(
-                Icons.playlist_add_check_rounded,
-                color: Colors.green,
-              ),
-              onPressed: () => _restockAll(),
-              tooltip: "Restock Semua",
-            ),
-          ],
-          TextButton.icon(
-            onPressed: _handleExport,
-            icon: const Icon(
-              CupertinoIcons.cloud_download_fill,
-              color: Colors.green,
-              size: 20,
-            ),
-            label: Text(
-              "Export",
-              style: GoogleFonts.inter(
-                color: Colors.green,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          TextButton.icon(
-            onPressed: () => _handleBulkImport(),
-            icon: const Icon(
-              CupertinoIcons.cloud_upload_fill,
-              color: Colors.blue,
-              size: 20,
-            ),
-            label: Text(
-              "Import",
-              style: GoogleFonts.inter(
-                color: Colors.blue,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          IconButton(
-            onPressed: () => _showInfoHelp(),
+          // ⋮ More menu: Export, Import, Info
+          PopupMenuButton<String>(
             icon: Icon(
-              CupertinoIcons.info_circle,
-              color: isDark ? Colors.white70 : Colors.grey[600],
+              CupertinoIcons.ellipsis_circle,
+              color: isDark ? Colors.white70 : Colors.grey[700],
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            onSelected: (value) {
+              if (value == 'export') _handleExport();
+              if (value == 'import') _handleBulkImport();
+              if (value == 'info') _showInfoHelp();
+            },
+            itemBuilder: (ctx) => [
+              PopupMenuItem(
+                value: 'export',
+                child: Row(
+                  children: [
+                    const Icon(
+                      CupertinoIcons.cloud_download_fill,
+                      color: Colors.green,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Export Excel',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'import',
+                child: Row(
+                  children: [
+                    const Icon(
+                      CupertinoIcons.cloud_upload_fill,
+                      color: Colors.blue,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Import Excel',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'info',
+                child: Row(
+                  children: [
+                    Icon(
+                      CupertinoIcons.info_circle,
+                      color: Colors.grey[600],
+                      size: 18,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Panduan',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          // + Add product button
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: IconButton(
+              icon: Icon(
+                CupertinoIcons.plus_circle_fill,
+                color: primaryOrange,
+                size: 28,
+              ),
+              onPressed: () => _openProductForm(),
+              tooltip: 'Tambah Produk',
             ),
           ),
-          IconButton(
-            icon: const Icon(
-              CupertinoIcons.plus_circle_fill,
-              color: Color(0xFFEA5700),
-              size: 28,
-            ),
-            onPressed: () => _openProductForm(),
-          ),
-          const SizedBox(width: 8),
         ],
       ),
       body: Column(
         children: [
           // Search Bar
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
             child: BigSearchBar(
               controller: _searchController,
               hintText: SettingsController.instance.getString('search_product'),
-              onChanged: (val) {
-                // Listener already attached in initState, but we can keep this for immediate feedback if needed
-                // _filterProducts(); // logic handles by listener
-              },
+              onChanged: (val) {},
               onClear: () {
                 _searchController.clear();
-                // trigger filter update if listener doesn't catch clear?
-                // listener catches it.
               },
             ),
           ),
@@ -632,7 +648,7 @@ class _InventoryPageState extends State<InventoryPage> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: _fetchData,
-              color: const Color(0xFFEA5700),
+              color: primaryOrange,
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : Column(
@@ -669,6 +685,70 @@ class _InventoryPageState extends State<InventoryPage> {
                           ),
                         ),
 
+                        // Batch action bar — only visible in Terbatas mode
+                        if (_stockFilter == 'limited')
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? Colors.orange.withValues(alpha: 0.08)
+                                    : Colors.orange.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.orange.withValues(alpha: 0.25),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    CupertinoIcons.cube_box,
+                                    size: 15,
+                                    color: Colors.orange[700],
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Aksi Massal:',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.orange[700],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: _buildBatchActionButton(
+                                            icon: Icons
+                                                .playlist_add_check_rounded,
+                                            label: 'Restock Massal',
+                                            color: Colors.green,
+                                            onTap: _restockAll,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: _buildBatchActionButton(
+                                            icon: Icons.delete_sweep_rounded,
+                                            label: 'Kosongkan',
+                                            color: Colors.red,
+                                            onTap: _emptyAllStock,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
                         // Categories List
                         SizedBox(
                           height: 50,
@@ -690,7 +770,7 @@ class _InventoryPageState extends State<InventoryPage> {
                                 selected: isSelected,
                                 onSelected: (_) =>
                                     _selectCategory(isAll ? null : cat!.id),
-                                selectedColor: const Color(0xFFEA5700),
+                                selectedColor: primaryOrange,
                                 backgroundColor: Theme.of(context).cardColor,
                                 labelStyle: GoogleFonts.inter(
                                   color: isSelected
@@ -743,14 +823,12 @@ class _InventoryPageState extends State<InventoryPage> {
                               : LayoutBuilder(
                                   builder: (context, constraints) {
                                     if (constraints.maxWidth > 600) {
-                                      // Grid View for Tablets
                                       return GridView.builder(
                                         padding: const EdgeInsets.all(20),
                                         gridDelegate:
                                             const SliverGridDelegateWithMaxCrossAxisExtent(
                                               maxCrossAxisExtent: 220,
-                                              childAspectRatio:
-                                                  0.65, // Taller cards for column layout
+                                              childAspectRatio: 0.65,
                                               crossAxisSpacing: 16,
                                               mainAxisSpacing: 16,
                                             ),
@@ -765,7 +843,6 @@ class _InventoryPageState extends State<InventoryPage> {
                                         },
                                       );
                                     }
-                                    // List View for Mobile
                                     return ListView.builder(
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 20,
@@ -789,6 +866,44 @@ class _InventoryPageState extends State<InventoryPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildBatchActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

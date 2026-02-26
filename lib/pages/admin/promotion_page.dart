@@ -23,6 +23,44 @@ class _PromotionPageState extends State<PromotionPage> {
     decimalDigits: 0,
   );
 
+  List<Promotion> _promos = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadAndCleanPromos());
+  }
+
+  Future<void> _loadAndCleanPromos() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    final controller = Provider.of<AdminController>(context, listen: false);
+    if (controller.storeId == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+    final allPromos = await controller.promotionService.getAllPromotions(
+      controller.storeId!,
+    );
+    final now = DateTime.now();
+    // Auto-delete expired promos
+    for (final p in allPromos) {
+      if (p.endDate != null && p.endDate!.isBefore(now)) {
+        await controller.promotionService.deletePromotion(p.id);
+      }
+    }
+    // Reload clean list
+    final cleaned = await controller.promotionService.getAllPromotions(
+      controller.storeId!,
+    );
+    if (mounted)
+      setState(() {
+        _promos = cleaned;
+        _isLoading = false;
+      });
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = Provider.of<AdminController>(context);
@@ -84,33 +122,26 @@ class _PromotionPageState extends State<PromotionPage> {
           ),
         ],
       ),
-      body: FutureBuilder<List<Promotion>>(
-        future: controller.promotionService.getAllPromotions(
-          controller.storeId!,
-        ),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
-          final promos = snapshot.data ?? [];
-
-          if (promos.isEmpty) {
-            return _buildEmptyState(context, primaryColor);
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: promos.length,
-            itemBuilder: (context, index) {
-              final promo = promos[index];
-              return _buildPromoCard(context, promo, controller, isDark);
-            },
-          );
-        },
-      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _loadAndCleanPromos,
+              child: _promos.isEmpty
+                  ? _buildEmptyState(context, primaryColor)
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _promos.length,
+                      itemBuilder: (context, index) {
+                        final promo = _promos[index];
+                        return _buildPromoCard(
+                          context,
+                          promo,
+                          controller,
+                          isDark,
+                        );
+                      },
+                    ),
+            ),
     );
   }
 
@@ -213,7 +244,7 @@ class _PromotionPageState extends State<PromotionPage> {
                             onChanged: (val) async {
                               await controller.promotionService
                                   .updatePromotionStatus(promo.id, val);
-                              if (mounted) setState(() {});
+                              if (mounted) _loadAndCleanPromos();
                             },
                             activeTrackColor: color,
                           ),
@@ -239,7 +270,11 @@ class _PromotionPageState extends State<PromotionPage> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
+                      // Expiry badge
+                      if (promo.endDate != null)
+                        _buildExpiryBadge(promo.endDate!),
+                      const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -279,6 +314,49 @@ class _PromotionPageState extends State<PromotionPage> {
     );
   }
 
+  Widget _buildExpiryBadge(DateTime endDate) {
+    final now = DateTime.now();
+    final daysLeft = endDate.difference(now).inDays;
+    final formatted = '${endDate.day}/${endDate.month}/${endDate.year}';
+
+    Color badgeColor;
+    String label;
+    if (daysLeft <= 0) {
+      badgeColor = Colors.red;
+      label = 'Berakhir hari ini';
+    } else if (daysLeft <= 3) {
+      badgeColor = Colors.orange;
+      label = '$daysLeft hari lagi · Berakhir $formatted';
+    } else {
+      badgeColor = Colors.green;
+      label = '$daysLeft hari lagi · Berakhir $formatted';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: badgeColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.timer_outlined, size: 12, color: badgeColor),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              color: badgeColor,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _getTypeLabel(String type) {
     switch (type) {
       case 'discount':
@@ -312,7 +390,7 @@ class _PromotionPageState extends State<PromotionPage> {
       backgroundColor: Colors.transparent,
       builder: (context) => const PromotionFormSheet(),
     ).then((_) {
-      if (mounted) setState(() {});
+      if (mounted) _loadAndCleanPromos();
     });
   }
 
@@ -342,7 +420,7 @@ class _PromotionPageState extends State<PromotionPage> {
 
     if (confirm == true) {
       await controller.promotionService.deletePromotion(promo.id);
-      if (mounted) setState(() {});
+      if (mounted) _loadAndCleanPromos();
     }
   }
 

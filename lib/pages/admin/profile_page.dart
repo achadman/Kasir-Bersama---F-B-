@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
@@ -13,8 +12,7 @@ import 'employee_page.dart';
 import 'package:flutter/cupertino.dart';
 import '../../controllers/settings_controller.dart';
 import '../../services/backup_service.dart';
-import '../../services/google_drive_service.dart';
-import 'package:path_provider/path_provider.dart';
+
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 
@@ -33,22 +31,13 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _avatarUrl;
   String? _storeName;
   String? _storeLogo;
-  String? _driveUserEmail;
+
   final Color _primaryColor = const Color(0xFFEA5700);
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
-    _initDrive();
-  }
-
-  void _initDrive() {
-    final svc = GoogleDriveService.instance;
-    setState(() => _driveUserEmail = svc.currentUser?.email);
-    svc.googleSignIn.onCurrentUserChanged.listen((account) {
-      if (mounted) setState(() => _driveUserEmail = account?.email);
-    });
   }
 
   Future<void> _loadProfile() async {
@@ -429,178 +418,6 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  Future<void> _signInWithGoogle() async {
-    setState(() => _isLoading = true);
-    try {
-      await GoogleDriveService.instance.signIn();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Gagal masuk: $e"),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _signOutGoogle() async {
-    await GoogleDriveService.instance.signOut();
-    if (mounted) setState(() => _driveUserEmail = null);
-  }
-
-  Future<void> _backupToCloud() async {
-    setState(() => _isLoading = true);
-    try {
-      final db = context.read<AppDatabase>();
-      // Create ZIP without triggering the share sheet
-      final zipPath = await BackupService(db).createFullBackup(share: false);
-      if (zipPath == null) throw "Gagal membuat file backup";
-
-      await GoogleDriveService.instance.uploadFile(File(zipPath));
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("✅ Backup berhasil diunggah ke Google Drive!"),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Gagal sync ke Drive: $e"),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _restoreFromCloud() async {
-    // 1. Find the latest backup in Drive
-    setState(() => _isLoading = true);
-    try {
-      final latestFile = await GoogleDriveService.instance.findLatestBackup(
-        'pos_backup_',
-      );
-      if (latestFile == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Tidak ada backup di Google Drive."),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return;
-      }
-
-      if (!mounted) return;
-
-      // 2. Confirm
-      final confirm = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          title: Text(
-            "Restore dari Drive?",
-            style: GoogleFonts.poppins(
-              fontWeight: FontWeight.bold,
-              color: Colors.blue,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.cloud_download_rounded,
-                size: 48,
-                color: Colors.blue,
-              ),
-              const SizedBox(height: 10),
-              Text(
-                "File: ${latestFile.name}\n\nTindakan ini akan MENGGANTI SEMUA DATA dengan data dari Google Drive.",
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text("Batal"),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text(
-                "RESTORE",
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        ),
-      );
-
-      if (confirm != true) return;
-
-      // 3. Download to temp
-      final tempDir = await getTemporaryDirectory();
-      final localPath = '${tempDir.path}/${latestFile.name}';
-      await GoogleDriveService.instance.downloadFile(latestFile.id!, localPath);
-
-      // 4. Restore
-      if (!mounted) return;
-      final db = context.read<AppDatabase>();
-      await BackupService(db).restoreFullBackup(localPath);
-
-      if (mounted) {
-        final isDesktop =
-            Theme.of(context).platform == TargetPlatform.windows ||
-            Theme.of(context).platform == TargetPlatform.linux ||
-            Theme.of(context).platform == TargetPlatform.macOS;
-        if (isDesktop) {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AlertDialog(
-              title: const Text("Restore Berhasil"),
-              content: const Text(
-                "Data berhasil dipulihkan dari Google Drive.\n\nSilakan RESTART aplikasi.",
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => exit(0),
-                  child: const Text("Keluar Aplikasi"),
-                ),
-              ],
-            ),
-          );
-        }
-      }
-    } catch (e, st) {
-      debugPrint("Restore from Drive Error: $e\n$st");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Gagal restore: $e"),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
   Future<void> _restoreData() async {
     // 1. Pick File
     FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -890,14 +707,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
                   ]),
-                  const SizedBox(height: 20),
-                  _buildSectionTitle("CLOUD SYNC"),
-                  // google_sign_in natively supports Android & iOS only
-                  if (!kIsWeb && (Platform.isAndroid || Platform.isIOS))
-                    _buildCloudSyncCard()
-                  else
-                    _buildCloudSyncDesktopInfo(),
-                  const SizedBox(height: 30),
+
                   _buildSectionTitle(
                     SettingsController.instance.getString('danger_zone'),
                   ), // Zona Berbahaya
@@ -1322,227 +1132,6 @@ class _ProfilePageState extends State<ProfilePage> {
   // Placeholder for compatibility, logic moved inside _buildAppSettings
   Widget _buildThemeToggle() {
     return const SizedBox.shrink();
-  }
-
-  Widget _buildCloudSyncCard() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isConnected = _driveUserEmail != null;
-    const driveBlue = Color(0xFF1A73E8);
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 24),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isConnected
-              ? driveBlue.withValues(alpha: 0.4)
-              : Colors.grey.withValues(alpha: 0.2),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: (isConnected ? driveBlue : Colors.black).withValues(
-              alpha: isDark ? 0.15 : 0.05,
-            ),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: driveBlue.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.cloud_queue_rounded,
-                    color: driveBlue,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Google Drive",
-                        style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.bold,
-                          color: isDark
-                              ? Colors.white
-                              : const Color(0xFF2D3436),
-                        ),
-                      ),
-                      Text(
-                        isConnected ? _driveUserEmail! : "Belum terhubung",
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          color: isConnected ? driveBlue : Colors.grey,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                if (isConnected)
-                  IconButton(
-                    tooltip: "Putus Koneksi",
-                    icon: const Icon(
-                      Icons.logout_rounded,
-                      color: Colors.grey,
-                      size: 20,
-                    ),
-                    onPressed: _signOutGoogle,
-                  ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (!isConnected)
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.login_rounded, size: 18),
-                  label: Text(
-                    "Hubungkan Google Drive",
-                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: driveBlue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  onPressed: _signInWithGoogle,
-                ),
-              )
-            else
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildCloudButton(
-                      icon: Icons.cloud_upload_rounded,
-                      label: "Sync ke Cloud",
-                      color: driveBlue,
-                      onTap: _backupToCloud,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildCloudButton(
-                      icon: Icons.cloud_download_rounded,
-                      label: "Restore Drive",
-                      color: const Color(0xFF0F9D58),
-                      onTap: _restoreFromCloud,
-                    ),
-                  ),
-                ],
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCloudButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withValues(alpha: 0.2)),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 22),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white70 : const Color(0xFF2D3436),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCloudSyncDesktopInfo() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 24),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: Colors.grey.withValues(alpha: 0.2),
-          width: 1.5,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: Colors.grey.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.cloud_off_rounded,
-              color: Colors.grey[600],
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Google Drive Sync",
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : const Color(0xFF2D3436),
-                  ),
-                ),
-                Text(
-                  "Hanya tersedia di Android & iOS",
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: Colors.grey[500],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildSectionTitle(String title) {

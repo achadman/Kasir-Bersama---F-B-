@@ -5,16 +5,18 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import '../../controllers/admin_controller.dart';
-import '../../controllers/theme_controller.dart';
 import '../../services/platform/file_manager.dart';
 import '../../widgets/kasir_drawer.dart';
 import 'widgets/kasir_side_navigation.dart';
-import 'package:intl/intl.dart';
 
 class UserProfilePage extends StatefulWidget {
   final VoidCallback? onMenuPressed;
   final bool showSidebar;
-  const UserProfilePage({super.key, this.onMenuPressed, this.showSidebar = true});
+  const UserProfilePage({
+    super.key,
+    this.onMenuPressed,
+    this.showSidebar = true,
+  });
 
   @override
   State<UserProfilePage> createState() => _UserProfilePageState();
@@ -139,10 +141,15 @@ class _UserProfilePageState extends State<UserProfilePage> {
     final content = LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth >= 720;
-        final double horizontalPadding = isWide ? (constraints.maxWidth - 600) / 2 : 20;
+        final double horizontalPadding = isWide
+            ? (constraints.maxWidth - 600) / 2
+            : 20;
 
         return SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 24),
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPadding,
+            vertical: 24,
+          ),
           child: Column(
             children: [
               _buildProfileCard(isDark, adminCtrl, primaryColor),
@@ -151,10 +158,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
               const SizedBox(height: 40),
               Text(
                 "Ver 1.0.0 • PosKasirAsri",
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: Colors.grey[500],
-                ),
+                style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[500]),
               ),
             ],
           ),
@@ -164,7 +168,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      drawer: widget.showSidebar ? KasirDrawer(currentRoute: '/profile') : null,
+      drawer: widget.showSidebar
+          ? const KasirDrawer(currentRoute: '/profile')
+          : null,
       appBar: AppBar(
         title: Text(
           "Profil Saya",
@@ -211,7 +217,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
           if (isWide && widget.showSidebar) {
             return Row(
               children: [
-                KasirSideNavigation(currentRoute: '/profile'),
+                const KasirSideNavigation(currentRoute: '/profile'),
                 Expanded(child: content),
               ],
             );
@@ -222,7 +228,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
     );
   }
 
-  Widget _buildProfileCard(bool isDark, AdminController adminCtrl, Color primaryColor) {
+  Widget _buildProfileCard(
+    bool isDark,
+    AdminController adminCtrl,
+    Color primaryColor,
+  ) {
     final avatarUrl = adminCtrl.profileUrl;
 
     return Container(
@@ -357,10 +367,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
             children: [
               Text(
                 label,
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: Colors.grey[500],
-                ),
+                style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[500]),
               ),
               Text(
                 value,
@@ -377,7 +384,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
     );
   }
 
-  Widget _buildPermissionsCard(bool isDark, AdminController adminCtrl, Color primaryColor) {
+  Widget _buildPermissionsCard(
+    bool isDark,
+    AdminController adminCtrl,
+    Color primaryColor,
+  ) {
     final perms = adminCtrl.permissions ?? {};
     final bool isOwner = adminCtrl.role == 'owner' || adminCtrl.role == 'admin';
 
@@ -416,7 +427,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
               ),
               child: Row(
                 children: [
-                  const Icon(CupertinoIcons.shield_fill, color: Colors.blue, size: 20),
+                  const Icon(
+                    CupertinoIcons.shield_fill,
+                    color: Colors.blue,
+                    size: 20,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -437,13 +452,28 @@ class _UserProfilePageState extends State<UserProfilePage> {
               runSpacing: 8,
               children: [
                 _buildPermissionChip("POS Access", perms['pos_access'] == true),
-                _buildPermissionChip("Inventory", perms['manage_inventory'] == true),
-                _buildPermissionChip("Categories", perms['manage_categories'] == true),
+                _buildPermissionChip(
+                  "Inventory",
+                  perms['manage_inventory'] == true,
+                ),
+                _buildPermissionChip(
+                  "Categories",
+                  perms['manage_categories'] == true,
+                ),
                 _buildPermissionChip("History", perms['view_history'] == true),
                 _buildPermissionChip("Reports", perms['view_reports'] == true),
-                _buildPermissionChip("Printer", perms['manage_printer'] == true),
-                _buildPermissionChip("Promotions", perms['manage_promotions'] == true),
-                _buildPermissionChip("Customers", perms['manage_customers'] == true),
+                _buildPermissionChip(
+                  "Printer",
+                  perms['manage_printer'] == true,
+                ),
+                _buildPermissionChip(
+                  "Promotions",
+                  perms['manage_promotions'] == true,
+                ),
+                _buildPermissionChip(
+                  "Customers",
+                  perms['manage_customers'] == true,
+                ),
               ],
             ),
         ],
@@ -460,14 +490,18 @@ class _UserProfilePageState extends State<UserProfilePage> {
             : Colors.red.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: granted ? Colors.green.withValues(alpha: 0.2) : Colors.red.withValues(alpha: 0.1),
+          color: granted
+              ? Colors.green.withValues(alpha: 0.2)
+              : Colors.red.withValues(alpha: 0.1),
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            granted ? CupertinoIcons.check_mark_circled_solid : CupertinoIcons.multiply_circle_fill,
+            granted
+                ? CupertinoIcons.check_mark_circled_solid
+                : CupertinoIcons.multiply_circle_fill,
             size: 14,
             color: granted ? Colors.green : Colors.red[300],
           ),

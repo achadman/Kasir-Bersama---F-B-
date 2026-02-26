@@ -15,6 +15,15 @@ class ProductGrid extends StatelessWidget {
   final Widget Function(BuildContext, Product)? extraInfoBuilder;
   final Widget Function(BuildContext, Product)? actionBuilder;
 
+  /// When non-null, only show products whose ID is in this set
+  final Set<String>? promoProductIds;
+
+  /// When non-null, only show products whose categoryId is in this set
+  final Set<String>? promoCategoryIds;
+
+  /// productId -> totalUnitsSold; used for accurate Popular sort.
+  final Map<String, int>? salesMap;
+
   const ProductGrid({
     super.key,
     required this.storeId,
@@ -25,6 +34,9 @@ class ProductGrid extends StatelessWidget {
     required this.onItemTap,
     this.extraInfoBuilder,
     this.actionBuilder,
+    this.promoProductIds,
+    this.promoCategoryIds,
+    this.salesMap,
   });
 
   @override
@@ -34,12 +46,6 @@ class ProductGrid extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final primaryColor = theme.colorScheme.primary;
     final textHeading = isDark ? Colors.white : const Color(0xFF2D3436);
-
-    final currencyFormat = NumberFormat.currency(
-      locale: 'id',
-      symbol: 'Rp ',
-      decimalDigits: 0,
-    );
 
     final db = Provider.of<AppDatabase>(context);
 
@@ -64,7 +70,22 @@ class ProductGrid extends StatelessWidget {
 
         var localProducts = snapshot.data!;
 
-        // 1. Client-side search (Drift can do this too, but let's keep logic similar for now)
+        // Client-side promo filter
+        if (promoProductIds != null || promoCategoryIds != null) {
+          localProducts = localProducts.where((p) {
+            if (promoProductIds != null && promoProductIds!.contains(p.id)) {
+              return true;
+            }
+            if (promoCategoryIds != null &&
+                p.categoryId != null &&
+                promoCategoryIds!.contains(p.categoryId!)) {
+              return true;
+            }
+            return false;
+          }).toList();
+        }
+
+        // 1. Client-side search
         var filteredProducts = localProducts.where((p) {
           if (searchQuery.isNotEmpty) {
             final q = searchQuery.toLowerCase();
@@ -79,15 +100,19 @@ class ProductGrid extends StatelessWidget {
 
         // 2. Sort
         if (filterType == "Recent") {
+          // Most recently *created* product first
           filteredProducts.sort((a, b) {
-            final da = a.lastUpdated ?? DateTime(2000);
-            final db = b.lastUpdated ?? DateTime(2000);
+            final da = a.createdAt ?? DateTime(2000);
+            final db = b.createdAt ?? DateTime(2000);
             return db.compareTo(da);
           });
         } else if (filterType == "Popular") {
-          filteredProducts.sort(
-            (a, b) => (b.stockQuantity ?? 0).compareTo(a.stockQuantity ?? 0),
-          );
+          // Most total units sold first (real sales data)
+          filteredProducts.sort((a, b) {
+            final soldA = salesMap?[a.id] ?? 0;
+            final soldB = salesMap?[b.id] ?? 0;
+            return soldB.compareTo(soldA);
+          });
         }
 
         if (filteredProducts.isEmpty) {
@@ -129,7 +154,14 @@ class ProductGrid extends StatelessWidget {
                 itemCount: products.length,
                 itemBuilder: (context, i) {
                   final p = products[i];
-                  return _buildGridItem(context, p, isDark, textHeading, primaryColor, isWide);
+                  return _buildGridItem(
+                    context,
+                    p,
+                    isDark,
+                    textHeading,
+                    primaryColor,
+                    isWide,
+                  );
                 },
               );
             },
@@ -140,7 +172,13 @@ class ProductGrid extends StatelessWidget {
             itemCount: products.length,
             itemBuilder: (context, i) {
               final p = products[i];
-              return _buildListItem(context, p, isDark, textHeading, primaryColor);
+              return _buildListItem(
+                context,
+                p,
+                isDark,
+                textHeading,
+                primaryColor,
+              );
             },
           );
         }
@@ -239,7 +277,9 @@ class ProductGrid extends StatelessWidget {
                               isOutOfStock ? "Habis" : "Stok: $stockQty",
                               style: GoogleFonts.inter(
                                 fontSize: isWide ? 9 : 10,
-                                color: isOutOfStock ? Colors.red : Colors.grey[600],
+                                color: isOutOfStock
+                                    ? Colors.red
+                                    : Colors.grey[600],
                                 fontWeight: isOutOfStock
                                     ? FontWeight.bold
                                     : FontWeight.normal,
@@ -247,7 +287,13 @@ class ProductGrid extends StatelessWidget {
                             )
                           else
                             const SizedBox(),
-                          _buildActionButton(context, p, isOutOfStock, primaryColor, isWide),
+                          _buildActionButton(
+                            context,
+                            p,
+                            isOutOfStock,
+                            primaryColor,
+                            isWide,
+                          ),
                         ],
                       ),
                     ],
@@ -356,7 +402,9 @@ class ProductGrid extends StatelessWidget {
                               isOutOfStock ? "Habis" : "Stok: $stockQty",
                               style: GoogleFonts.inter(
                                 fontSize: 12,
-                                color: isOutOfStock ? Colors.red : Colors.grey[600],
+                                color: isOutOfStock
+                                    ? Colors.red
+                                    : Colors.grey[600],
                                 fontWeight: isOutOfStock
                                     ? FontWeight.bold
                                     : FontWeight.normal,
@@ -370,7 +418,13 @@ class ProductGrid extends StatelessWidget {
                 ),
 
                 // Action
-                _buildActionButton(context, p, isOutOfStock, primaryColor, false),
+                _buildActionButton(
+                  context,
+                  p,
+                  isOutOfStock,
+                  primaryColor,
+                  false,
+                ),
               ],
             ),
           ),
@@ -382,7 +436,9 @@ class ProductGrid extends StatelessWidget {
   Widget _buildImage(Product p, bool isDark, bool isWide) {
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(isWide ? 12 : 20)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(isWide ? 12 : 20),
+        ),
         color: isDark ? Colors.grey[800] : Colors.grey[50],
         image: p.imageUrl != null
             ? DecorationImage(
@@ -394,26 +450,27 @@ class ProductGrid extends StatelessWidget {
     );
   }
 
-  Widget _buildPromoBadge(
-    BuildContext context,
-    Product p,
-    String productId,
-  ) {
+  Widget _buildPromoBadge(BuildContext context, Product p, String productId) {
     final db = Provider.of<AppDatabase>(context);
     return Positioned(
       top: 10,
       left: 10,
       child: StreamBuilder<List<PromotionItem>>(
-        stream: (db.select(db.promotionItems)..where((t) => t.productId.equals(productId))).watch(),
+        stream: (db.select(
+          db.promotionItems,
+        )..where((t) => t.productId.equals(productId))).watch(),
         builder: (context, promoSnapshot) {
           if (promoSnapshot.hasData && promoSnapshot.data!.isNotEmpty) {
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.red,
+                color: Colors.green,
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 4),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    blurRadius: 4,
+                  ),
                 ],
               ),
               child: Text(
@@ -448,7 +505,11 @@ class ProductGrid extends StatelessWidget {
         color: isOutOfStock ? Colors.grey[300] : primaryColor,
         shape: BoxShape.circle,
       ),
-      child: Icon(Icons.add_rounded, color: Colors.white, size: isWide ? 16 : 20),
+      child: Icon(
+        Icons.add_rounded,
+        color: Colors.white,
+        size: isWide ? 16 : 20,
+      ),
     );
   }
 }

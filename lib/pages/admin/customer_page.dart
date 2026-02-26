@@ -226,33 +226,37 @@ class _CustomerPageState extends State<CustomerPage> {
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Program Loyalitas",
-                    style: GoogleFonts.inter(
-                      color: Colors.white70,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Program Loyalitas",
+                      style: GoogleFonts.inter(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "Ranking Poin Pelanggan",
-                    style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 22,
+                    const SizedBox(height: 4),
+                    Text(
+                      "Ranking Poin Pelanggan",
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 12),
               const Icon(
                 CupertinoIcons.star_circle_fill,
                 color: Colors.white,
-                size: 40,
+                size: 32,
               ),
             ],
           ),
@@ -310,16 +314,27 @@ class _CustomerPageState extends State<CustomerPage> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                "${c.points} Poin",
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFFEA5700),
-                  fontSize: 16,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    CupertinoIcons.star_fill,
+                    size: 11,
+                    color: const Color(0xFFEA5700),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    "${c.points}",
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFFEA5700),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
               ),
               Text(
-                "Loyalty Score",
+                "poin",
                 style: GoogleFonts.inter(fontSize: 10, color: Colors.grey[400]),
               ),
             ],

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:drift/drift.dart';
 
 import 'database/connection/connection.dart';
@@ -255,8 +256,22 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(expenses);
       }
       if (from < 5) {
-        await m.createTable(customers);
-        await m.addColumn(transactions, transactions.customerId);
+        try {
+          await m.createTable(customers);
+        } catch (e) {
+          debugPrint(
+            "Migration: 'customers' table already exists, skipping...",
+          );
+        }
+        try {
+          await m.addColumn(transactions, transactions.customerId);
+        } catch (e) {
+          if (e.toString().contains('duplicate column name')) {
+            debugPrint("Migration: 'customer_id' already exists, skipping...");
+          } else {
+            rethrow;
+          }
+        }
       }
     },
   );

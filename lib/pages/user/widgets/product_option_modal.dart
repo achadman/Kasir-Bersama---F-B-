@@ -151,160 +151,162 @@ class _ProductOptionModalState extends State<ProductOptionModal> {
         color: theme.scaffoldBackgroundColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
       ),
-      child: Column(
-        children: [
-          // Drag Handle
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 12),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(2),
+      child: SafeArea(
+        child: Column(
+          children: [
+            // Drag Handle
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
 
-          // Header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.product.name ?? "Unknown Product",
-                        style: GoogleFonts.poppins(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.product.name ?? "Unknown Product",
+                          style: GoogleFonts.poppins(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                      Text(
-                        _currencyFormat.format(widget.product.salePrice ?? 0),
-                        style: GoogleFonts.inter(
-                          color: primaryColor,
-                          fontWeight: FontWeight.w600,
+                        Text(
+                          _currencyFormat.format(widget.product.salePrice ?? 0),
+                          style: GoogleFonts.inter(
+                            color: primaryColor,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close_rounded),
-                ),
-              ],
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const Divider(),
+            const Divider(),
 
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : ListView(
-                    padding: const EdgeInsets.all(24),
-                    children: [
-                      ..._options.map(
-                        (opt) => _buildOptionSection(opt, isDark),
-                      ),
-
-                      const SizedBox(height: 16),
-                      Text(
-                        "Catatan Khusus",
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView(
+                      padding: const EdgeInsets.all(24),
+                      children: [
+                        ..._options.map(
+                          (opt) => _buildOptionSection(opt, isDark),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _notesController,
-                        maxLines: 2,
-                        decoration: InputDecoration(
-                          hintText:
-                              "Contoh: Jangan pakai bawang, pedas banget...",
-                          hintStyle: GoogleFonts.inter(
-                            fontSize: 13,
+
+                        const SizedBox(height: 16),
+                        Text(
+                          "Catatan Khusus",
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _notesController,
+                          maxLines: 2,
+                          decoration: InputDecoration(
+                            hintText:
+                                "Contoh: Jangan pakai bawang, pedas banget...",
+                            hintStyle: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: Colors.grey,
+                            ),
+                            filled: true,
+                            fillColor: isDark
+                                ? Colors.grey[800]
+                                : Colors.grey[100],
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 100),
+                      ],
+                    ),
+            ),
+
+            // Footer
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, -5),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Total Harga",
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
                             color: Colors.grey,
                           ),
-                          filled: true,
-                          fillColor: isDark
-                              ? Colors.grey[800]
-                              : Colors.grey[100],
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide.none,
+                        ),
+                        Text(
+                          _currencyFormat.format(_calculateTotalPrice()),
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: primaryColor,
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 100),
-                    ],
+                      ],
+                    ),
                   ),
-          ),
-
-          // Footer
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: theme.cardColor,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -5),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Total Harga",
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          color: Colors.grey,
+                  SizedBox(
+                    height: 50,
+                    width: 160,
+                    child: ElevatedButton(
+                      onPressed: _confirmSelection,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                      Text(
-                        _currencyFormat.format(_calculateTotalPrice()),
+                      child: Text(
+                        "Tambah ke Cart",
                         style: GoogleFonts.poppins(
-                          fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: primaryColor,
+                          color: Colors.white,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                SizedBox(
-                  height: 50,
-                  width: 160,
-                  child: ElevatedButton(
-                    onPressed: _confirmSelection,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: Text(
-                      "Tambah ke Cart",
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -5,12 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../../../services/platform/file_manager.dart';
 import '../../../controllers/admin_controller.dart';
-import '../../../controllers/settings_controller.dart';
-import '../../admin/inventory_page.dart';
-import '../../admin/category_page.dart';
-import '../../admin/report/profit_loss_page.dart';
-import '../../admin/promotion_page.dart';
-import '../../admin/customer_page.dart';
 
 class KasirSideNavigation extends StatelessWidget {
   final int selectedIndex;
@@ -33,16 +27,36 @@ class KasirSideNavigation extends StatelessWidget {
     int effectiveIndex = selectedIndex;
     if (currentRoute != null) {
       switch (currentRoute) {
-        case '/inventory': effectiveIndex = 1; break;
-        case '/categories': effectiveIndex = 2; break;
-        case '/kasir': effectiveIndex = 3; break;
-        case '/order-history': effectiveIndex = 4; break;
-        case '/printer-settings': effectiveIndex = 7; break;
-        case '/profile': effectiveIndex = 8; break;
-        case '/promotions': effectiveIndex = 9; break;
-        case '/profit-loss': effectiveIndex = 11; break;
-        case '/customers': effectiveIndex = 12; break;
-        case '/attendance': effectiveIndex = 13; break;
+        case '/inventory':
+          effectiveIndex = 1;
+          break;
+        case '/categories':
+          effectiveIndex = 2;
+          break;
+        case '/kasir':
+          effectiveIndex = 3;
+          break;
+        case '/order-history':
+          effectiveIndex = 4;
+          break;
+        case '/printer-settings':
+          effectiveIndex = 7;
+          break;
+        case '/profile':
+          effectiveIndex = 8;
+          break;
+        case '/promotions':
+          effectiveIndex = 9;
+          break;
+        case '/profit-loss':
+          effectiveIndex = 11;
+          break;
+        case '/customers':
+          effectiveIndex = 12;
+          break;
+        case '/attendance':
+          effectiveIndex = 13;
+          break;
       }
     }
 
@@ -53,7 +67,7 @@ class KasirSideNavigation extends StatelessWidget {
         color: bgColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(2, 0),
           ),
@@ -76,12 +90,14 @@ class KasirSideNavigation extends StatelessWidget {
                   border: Border.all(
                     color: effectiveIndex == 8
                         ? const Color(0xFFEA5700)
-                        : const Color(0xFFEA5700).withOpacity(0.1),
+                        : const Color(0xFFEA5700).withValues(alpha: 0.1),
                     width: 2,
                   ),
                   image: adminCtrl.profileUrl != null
                       ? DecorationImage(
-                          image: FileManager().getImageProvider(adminCtrl.profileUrl!),
+                          image: FileManager().getImageProvider(
+                            adminCtrl.profileUrl!,
+                          ),
                           fit: BoxFit.cover,
                         )
                       : null,
@@ -182,7 +198,7 @@ class KasirSideNavigation extends StatelessWidget {
                 icon: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
+                    color: Colors.red.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -226,7 +242,7 @@ class KasirSideNavigation extends StatelessWidget {
                   boxShadow: isActive
                       ? [
                           BoxShadow(
-                            color: primaryColor.withOpacity(0.4),
+                            color: primaryColor.withValues(alpha: 0.4),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),

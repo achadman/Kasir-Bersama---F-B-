@@ -219,6 +219,16 @@ class TransactionDetailPage extends StatelessWidget {
                   final adminCtrl = context.read<AdminController>();
                   final receiptService = ReceiptService();
 
+                  final double subtotal = items.fold(0.0, (sum, it) {
+                    return sum +
+                        ((it['unitPrice'] ?? 0 as num).toDouble() *
+                            (it['quantity'] as num).toDouble());
+                  });
+                  final double discount = (subtotal - total).clamp(
+                    0.0,
+                    double.infinity,
+                  );
+
                   final pdfData = await receiptService.generateReceiptPdf(
                     storeName: adminCtrl.storeName ?? "Toko Asri",
                     storeLogoUrl: adminCtrl.storeLogo,
@@ -233,6 +243,8 @@ class TransactionDetailPage extends StatelessWidget {
                             (it['quantity'] as num).toDouble(),
                       };
                     }).toList(),
+                    subtotal: subtotal,
+                    discount: discount,
                     totalAmount: total,
                     cashReceived:
                         (transaction['cashReceived'] as num?)?.toDouble() ??
@@ -252,6 +264,8 @@ class TransactionDetailPage extends StatelessWidget {
                             .toString()
                             .substring(0, 8)
                             .toUpperCase(),
+                        subtotal: subtotal,
+                        discount: discount,
                         totalAmount: total,
                         cashReceived:
                             (transaction['cashReceived'] as num?)?.toDouble() ??
@@ -304,6 +318,16 @@ class TransactionDetailPage extends StatelessWidget {
                   final adminCtrl = context.read<AdminController>();
                   final receiptService = ReceiptService();
 
+                  final double subtotal = items.fold(0.0, (sum, it) {
+                    return sum +
+                        ((it['unitPrice'] ?? 0 as num).toDouble() *
+                            (it['quantity'] as num).toDouble());
+                  });
+                  final double discount = (subtotal - total).clamp(
+                    0.0,
+                    double.infinity,
+                  );
+
                   await receiptService.shareReceiptPdf(
                     storeName: adminCtrl.storeName ?? "Toko Asri",
                     storeLogoUrl: adminCtrl.storeLogo,
@@ -318,6 +342,8 @@ class TransactionDetailPage extends StatelessWidget {
                             (it['quantity'] as num).toDouble(),
                       };
                     }).toList(),
+                    subtotal: subtotal,
+                    discount: discount,
                     totalAmount: total,
                     cashReceived:
                         (transaction['cashReceived'] as num?)?.toDouble() ??

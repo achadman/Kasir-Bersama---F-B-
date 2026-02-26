@@ -246,7 +246,7 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
 
     return Scaffold(
       drawer: widget.showSidebar
-          ? KasirDrawer(currentRoute: '/order-history')
+          ? const KasirDrawer(currentRoute: '/order-history')
           : null,
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -254,7 +254,7 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
           if (isWide && widget.showSidebar) {
             return Row(
               children: [
-                KasirSideNavigation(currentRoute: '/order-history'),
+                const KasirSideNavigation(currentRoute: '/order-history'),
                 Expanded(child: content),
               ],
             );

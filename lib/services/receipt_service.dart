@@ -21,6 +21,8 @@ class ReceiptService {
     required String transactionId,
     required DateTime createdAt,
     required List<Map<String, dynamic>> items,
+    required double subtotal,
+    required double discount,
     required double totalAmount,
     required double cashReceived,
     required double change,
@@ -32,6 +34,8 @@ class ReceiptService {
       transactionId: transactionId,
       createdAt: createdAt,
       items: items,
+      subtotal: subtotal,
+      discount: discount,
       totalAmount: totalAmount,
       cashReceived: cashReceived,
       change: change,
@@ -54,6 +58,8 @@ class ReceiptService {
     required String transactionId,
     required DateTime createdAt,
     required List<Map<String, dynamic>> items,
+    required double subtotal,
+    required double discount,
     required double totalAmount,
     required double cashReceived,
     required double change,
@@ -221,6 +227,9 @@ class ReceiptService {
                 width: double.infinity,
                 child: pw.Column(
                   children: [
+                    _buildSummaryRow("Subtotal", subtotal),
+                    if (discount > 0)
+                      _buildSummaryRow("Potongan/Diskon", discount),
                     _buildSummaryRow(
                       "Total Tagihan",
                       totalAmount,

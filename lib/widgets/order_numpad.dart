@@ -26,8 +26,10 @@ class OrderNumpad extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final defaultBtnColor = isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100]!;
-    final activeBtnColor = const Color(0xFFFF8E53);
+    final defaultBtnColor = isDark
+        ? Colors.white.withValues(alpha: 0.05)
+        : Colors.grey[100]!;
+    const activeBtnColor = Color(0xFFFF8E53);
     final defaultTextColor = isDark ? Colors.white : Colors.black87;
 
     return LayoutBuilder(
@@ -48,24 +50,84 @@ class OrderNumpad extends StatelessWidget {
                 child: Column(
                   children: [
                     _buildRow([
-                      _buildBtn("7", defaultBtnColor, defaultTextColor, fontSize),
-                      _buildBtn("8", defaultBtnColor, defaultTextColor, fontSize),
-                      _buildBtn("9", defaultBtnColor, defaultTextColor, fontSize),
+                      _buildBtn(
+                        "7",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
+                      _buildBtn(
+                        "8",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
+                      _buildBtn(
+                        "9",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
                     ]),
                     _buildRow([
-                      _buildBtn("4", defaultBtnColor, defaultTextColor, fontSize),
-                      _buildBtn("5", defaultBtnColor, defaultTextColor, fontSize),
-                      _buildBtn("6", defaultBtnColor, defaultTextColor, fontSize),
+                      _buildBtn(
+                        "4",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
+                      _buildBtn(
+                        "5",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
+                      _buildBtn(
+                        "6",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
                     ]),
                     _buildRow([
-                      _buildBtn("1", defaultBtnColor, defaultTextColor, fontSize),
-                      _buildBtn("2", defaultBtnColor, defaultTextColor, fontSize),
-                      _buildBtn("3", defaultBtnColor, defaultTextColor, fontSize),
+                      _buildBtn(
+                        "1",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
+                      _buildBtn(
+                        "2",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
+                      _buildBtn(
+                        "3",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
                     ]),
                     _buildRow([
-                      _buildBtn("0", defaultBtnColor, defaultTextColor, fontSize),
-                      _buildBtn("000", defaultBtnColor, defaultTextColor, fontSize),
-                      _buildBtn(".", defaultBtnColor, defaultTextColor, fontSize),
+                      _buildBtn(
+                        "0",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
+                      _buildBtn(
+                        "000",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
+                      _buildBtn(
+                        ".",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
                     ]),
                   ],
                 ),
@@ -76,15 +138,63 @@ class OrderNumpad extends StatelessWidget {
                 child: Column(
                   children: [
                     if (showConfirm) ...[
-                      _buildBtn("C", Colors.red.withOpacity(0.05), Colors.red, fontSize, onTap: () => onTap("C")),
-                      _buildBtn("", defaultBtnColor, defaultTextColor, fontSize),
-                      _buildBtn("", defaultBtnColor, defaultTextColor, fontSize),
-                      _buildBtn("backspace", defaultBtnColor, defaultTextColor, fontSize, icon: Icons.backspace_outlined, onTap: onBackspace),
+                      _buildBtn(
+                        "C",
+                        Colors.red.withValues(alpha: 0.05),
+                        Colors.red,
+                        fontSize,
+                        onTap: () => onTap("C"),
+                      ),
+                      _buildBtn(
+                        "",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
+                      _buildBtn(
+                        "",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
+                      _buildBtn(
+                        "backspace",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                        icon: Icons.backspace_outlined,
+                        onTap: onBackspace,
+                      ),
                     ] else ...[
-                      _buildModeBtn("Qty", OrderNumpadMode.qty, activeBtnColor, defaultTextColor, fontSize),
-                      _buildModeBtn("%", OrderNumpadMode.disc, activeBtnColor, defaultTextColor, fontSize),
-                      _buildModeBtn("Price", OrderNumpadMode.price, activeBtnColor, defaultTextColor, fontSize),
-                      _buildBtn("backspace", defaultBtnColor, defaultTextColor, fontSize, icon: Icons.backspace_outlined, onTap: onBackspace),
+                      _buildModeBtn(
+                        "Qty",
+                        OrderNumpadMode.qty,
+                        activeBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
+                      _buildModeBtn(
+                        "%",
+                        OrderNumpadMode.disc,
+                        activeBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
+                      _buildModeBtn(
+                        "Price",
+                        OrderNumpadMode.price,
+                        activeBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                      ),
+                      _buildBtn(
+                        "backspace",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                        icon: Icons.backspace_outlined,
+                        onTap: onBackspace,
+                      ),
                     ],
                   ],
                 ),
@@ -105,11 +215,18 @@ class OrderNumpad extends StatelessWidget {
     );
   }
 
-  Widget _buildBtn(String value, Color color, Color tColor, double fSize, {IconData? icon, Function()? onTap}) {
+  Widget _buildBtn(
+    String value,
+    Color color,
+    Color tColor,
+    double fSize, {
+    IconData? icon,
+    Function()? onTap,
+  }) {
     return Expanded(
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(color: tColor.withOpacity(0.05), width: 0.5),
+          border: Border.all(color: tColor.withValues(alpha: 0.05), width: 0.5),
         ),
         child: Material(
           color: color,
@@ -133,15 +250,23 @@ class OrderNumpad extends StatelessWidget {
     );
   }
 
-  Widget _buildModeBtn(String label, OrderNumpadMode targetMode, Color activeColor, Color tColor, double fSize) {
+  Widget _buildModeBtn(
+    String label,
+    OrderNumpadMode targetMode,
+    Color activeColor,
+    Color tColor,
+    double fSize,
+  ) {
     final isActive = mode == targetMode;
     return Expanded(
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(color: tColor.withOpacity(0.05), width: 0.5),
+          border: Border.all(color: tColor.withValues(alpha: 0.05), width: 0.5),
         ),
         child: Material(
-          color: isActive ? activeColor : Colors.blueGrey.withOpacity(0.1),
+          color: isActive
+              ? activeColor
+              : Colors.blueGrey.withValues(alpha: 0.1),
           child: InkWell(
             onTap: () => onModeChanged(targetMode),
             child: Center(
@@ -153,26 +278,6 @@ class OrderNumpad extends StatelessWidget {
                   color: isActive ? Colors.white : tColor,
                 ),
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildConfirmBtn(Color activeColor) {
-    return Expanded(
-      flex: 2,
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.white.withOpacity(0.1), width: 0.5),
-        ),
-        child: Material(
-          color: activeColor,
-          child: InkWell(
-            onTap: onConfirm,
-            child: const Center(
-              child: Icon(Icons.check_circle_outline, color: Colors.white, size: 32),
             ),
           ),
         ),

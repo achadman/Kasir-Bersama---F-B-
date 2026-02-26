@@ -9,6 +9,8 @@ class PaymentSuccessDialog extends StatelessWidget {
   final Uint8List pdfData;
   final String transactionId;
   final double totalAmount;
+  final double? subtotal;
+  final double? discount;
   final double cashReceived;
   final double change;
   final VoidCallback onNewTransaction;
@@ -24,6 +26,8 @@ class PaymentSuccessDialog extends StatelessWidget {
     required this.pdfData,
     required this.transactionId,
     required this.totalAmount,
+    this.subtotal,
+    this.discount,
     required this.cashReceived,
     required this.change,
     required this.onNewTransaction,
@@ -99,6 +103,20 @@ class PaymentSuccessDialog extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
+                      if (subtotal != null &&
+                          discount != null &&
+                          discount! > 0) ...[
+                        _row("Subtotal", currencyFormat.format(subtotal!)),
+                        const SizedBox(height: 8),
+                        _row(
+                          "Diskon",
+                          "-${currencyFormat.format(discount!)}",
+                          color: Colors.orange,
+                        ),
+                        const SizedBox(height: 8),
+                        Divider(color: Colors.grey.withValues(alpha: 0.1)),
+                        const SizedBox(height: 8),
+                      ],
                       _row(
                         "Total Tagihan",
                         currencyFormat.format(totalAmount),

@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show OrderingMode, OrderingTerm;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -16,6 +17,7 @@ import '../../widgets/big_search_bar.dart';
 import 'widgets/category_icon_card.dart';
 import 'widgets/kasir_side_navigation.dart';
 import '../../services/app_database.dart';
+import '../../services/platform/file_manager.dart';
 
 class KasirPage extends StatefulWidget {
   final bool showSidebar;
@@ -42,6 +44,23 @@ class _KasirPageState extends State<KasirPage> {
   final List<Map<String, dynamic>> _cartItems = [];
   List<String> _categories = ["Semua"];
   final Map<String, String> _categoryMap = {}; // Name -> ID
+
+  // Promo categories state
+  // Each entry: {name, color, categoryIds: Set<String>, productIds: Set<String>, isAllProducts: bool}
+  List<Map<String, dynamic>> _promoCategories = [];
+  int _selectedPromoIndex = -1; // -1 = none selected
+
+  /// productId -> total units sold (all time), for Popular sort
+  Map<String, int> _salesMap = {};
+
+  // Preset promo chip colors (cycles through for multiple promos)
+  static const _promoColors = [
+    Color(0xFF00C853), // green
+    Color(0xFFFFAB00), // amber
+    Color(0xFF00B0FF), // cyan
+    Color(0xFFAA00FF), // purple
+    Color(0xFFFF6D00), // deep orange
+  ];
 
   final Color _primaryColor = const Color(0xFFFF4D4D);
   String? _storeName;
@@ -114,6 +133,79 @@ class _KasirPageState extends State<KasirPage> {
         }
         _categories = names;
       });
+    }
+    // Load promo categories and sales data after regular categories are ready
+    await _loadActivePromos();
+    await _loadSalesMap();
+  }
+
+  Future<void> _loadActivePromos() async {
+    if (_storeId == null) return;
+    final adminCtrl = context.read<AdminController>();
+    final db = context.read<AppDatabase>(); // capture before first await
+
+    final activePromos = await adminCtrl.promotionService.getActivePromotions(
+      _storeId!,
+    );
+
+    final List<Map<String, dynamic>> promoChips = [];
+    for (final promo in activePromos) {
+      if (promo.type != 'discount' || promo.value == null) continue;
+
+      // Get targets for this promo
+      final items = await (db.select(
+        db.promotionItems,
+      )..where((t) => t.promotionId.equals(promo.id))).get();
+
+      final Set<String> categoryIds = {};
+      final Set<String> productIds = {};
+      for (final item in items) {
+        if (item.categoryId != null) categoryIds.add(item.categoryId!);
+        if (item.productId != null) productIds.add(item.productId!);
+      }
+
+      promoChips.add({
+        'name': promo.name ?? 'Promo',
+        'value': promo.value,
+        'discountType': promo.discountType,
+        'categoryIds': categoryIds,
+        'productIds': productIds,
+        'isAllProducts': items.isEmpty,
+      });
+    }
+
+    if (mounted) {
+      setState(() {
+        _promoCategories = promoChips;
+        _selectedPromoIndex = -1;
+      });
+    }
+  }
+
+  Future<void> _loadSalesMap() async {
+    if (_storeId == null) return;
+    final db = context.read<AppDatabase>(); // capture before any await
+
+    // Fetch all transaction items for this store's transactions
+    final txItems = await (db.select(db.transactionItems)).get();
+    final txIds =
+        await (db.select(db.transactions)
+              ..where((t) => t.storeId.equals(_storeId!)))
+            .get()
+            .then((rows) => {for (var r in rows) r.id});
+
+    final Map<String, int> map = {};
+    for (final item in txItems) {
+      if (item.transactionId != null && txIds.contains(item.transactionId)) {
+        final pid = item.productId;
+        if (pid != null) {
+          map[pid] = (map[pid] ?? 0) + (item.quantity ?? 0);
+        }
+      }
+    }
+
+    if (mounted) {
+      setState(() => _salesMap = map);
     }
   }
 
@@ -220,10 +312,10 @@ class _KasirPageState extends State<KasirPage> {
     // Treat null and empty as same
     final listA = a ?? [];
     final listB = b ?? [];
-    
+
     if (listA.isEmpty && listB.isEmpty) return true;
     if (listA.length != listB.length) return false;
-    
+
     // Sort and compare option/value IDs to ensure order doesn't matter
     final sortedA = List<Map<String, dynamic>>.from(listA)
       ..sort((x, y) => x['value_id'].compareTo(y['value_id']));
@@ -300,7 +392,7 @@ class _KasirPageState extends State<KasirPage> {
       // 3. Generate Receipt Data
       final now = DateTime.now();
       final double finalCash = _cashReceived;
-      final double finalChange = _cashReceived - totalAmount;
+      final double finalChange = _cashReceived - finalTotal;
       final currentStoreName = _storeName ?? "Toko Kasir Asri";
       final currentStoreLogo = _storeLogoUrl;
 
@@ -326,6 +418,8 @@ class _KasirPageState extends State<KasirPage> {
             .toUpperCase(), // Shorten for receipt
         createdAt: now,
         items: receiptItems,
+        subtotal: totalAmount,
+        discount: discount,
         totalAmount: finalTotal,
         cashReceived: finalCash,
         change: finalChange,
@@ -345,6 +439,8 @@ class _KasirPageState extends State<KasirPage> {
           builder: (ctx) => PaymentSuccessDialog(
             pdfData: pdfData,
             transactionId: txId.substring(0, 8).toUpperCase(),
+            subtotal: totalAmount,
+            discount: discount,
             totalAmount: finalTotal,
             cashReceived: finalCash,
             change: finalChange,
@@ -432,75 +528,78 @@ class _KasirPageState extends State<KasirPage> {
       drawer: widget.showSidebar
           ? const KasirDrawer(currentRoute: '/kasir')
           : null,
-      appBar: isWide 
-        ? null 
-        : AppBar(
-            toolbarHeight: 74,
-            backgroundColor: isDark ? const Color(0xFF1A1C1E) : Colors.white,
-            elevation: 0,
-            leading: Builder(
-              builder: (ctx) {
-                return IconButton(
-                  icon: Icon(
-                    CupertinoIcons.bars,
+      appBar: isWide
+          ? null
+          : AppBar(
+              backgroundColor: isDark ? const Color(0xFF1A1C1E) : Colors.white,
+              elevation: 0,
+              leading: Builder(
+                builder: (ctx) {
+                  return IconButton(
+                    icon: Icon(
+                      CupertinoIcons.bars,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                    onPressed: () {
+                      if (widget.onMenuPressed != null) {
+                        widget.onMenuPressed!();
+                      } else {
+                        // Fallback for standalone usage
+                        Scaffold.of(ctx).openDrawer();
+                      }
+                    },
+                  );
+                },
+              ),
+              title: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Text(
+                  _storeName ?? "Toko Kasir Asri",
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
                     color: isDark ? Colors.white : Colors.black87,
                   ),
-                  onPressed: () {
-                    if (widget.onMenuPressed != null) {
-                      widget.onMenuPressed!();
-                    } else {
-                      // Fallback for standalone usage
-                      Scaffold.of(ctx).openDrawer();
-                    }
-                  },
-                );
-              },
-            ),
-            title: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Text(
-                _storeName ?? "Toko Kasir Asri",
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: isDark ? Colors.white : Colors.black87,
                 ),
               ),
-            ),
-            actions: [
-              // Only show cart icon on mobile
-              Builder(builder: (ctx) {
-                return IconButton(
-                  icon: Stack(
-                    children: [
-                      Icon(
-                        CupertinoIcons.cart,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                      if (_getCartTotalCount() > 0)
-                        Positioned(
-                          right: 0,
-                          top: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: const BoxDecoration(
-                              color: Colors.red,
-                              shape: BoxShape.circle,
-                            ),
-                            constraints: const BoxConstraints(
-                              minWidth: 8,
-                              minHeight: 8,
-                            ),
+              actions: [
+                // Only show cart icon on mobile
+                Builder(
+                  builder: (ctx) {
+                    return IconButton(
+                      icon: Stack(
+                        children: [
+                          Icon(
+                            CupertinoIcons.cart,
+                            color: isDark ? Colors.white : Colors.black87,
                           ),
-                        ),
-                    ],
-                  ),
-                  onPressed: _getCartTotalCount() > 0 ? _showCartSheet : null,
-                );
-              }),
-              const SizedBox(width: 8),
-            ],
-          ),
+                          if (_getCartTotalCount() > 0)
+                            Positioned(
+                              right: 0,
+                              top: 0,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  color: Colors.red,
+                                  shape: BoxShape.circle,
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 8,
+                                  minHeight: 8,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      onPressed: _getCartTotalCount() > 0
+                          ? _showCartSheet
+                          : null,
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+              ],
+            ),
       body: _storeId == null
           ? const Center(child: CircularProgressIndicator())
           : LayoutBuilder(
@@ -524,17 +623,31 @@ class _KasirPageState extends State<KasirPage> {
                             children: [
                               // Search and Toggle Row
                               Padding(
-                                padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                                padding: const EdgeInsets.fromLTRB(
+                                  24,
+                                  24,
+                                  24,
+                                  8,
+                                ),
                                 child: Row(
                                   children: [
                                     Expanded(
                                       child: BigSearchBar(
                                         controller: _searchController,
                                         hintText: "Cari menu atau Scan SKU...",
-                                        onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
+                                        onChanged: (val) => setState(
+                                          () =>
+                                              _searchQuery = val.toLowerCase(),
+                                        ),
                                         onSubmitted: (val) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(content: Text('Mari cari produk...')),
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                'Mari cari produk...',
+                                              ),
+                                            ),
                                           );
                                         },
                                         onClear: () {
@@ -548,56 +661,192 @@ class _KasirPageState extends State<KasirPage> {
                                     const SizedBox(width: 12),
                                     Container(
                                       decoration: BoxDecoration(
-                                        color: isDark ? Colors.white10 : Colors.white,
+                                        color: isDark
+                                            ? Colors.white10
+                                            : Colors.white,
                                         borderRadius: BorderRadius.circular(15),
                                         border: Border.all(
-                                          color: isDark ? Colors.white10 : Colors.grey[200]!,
+                                          color: isDark
+                                              ? Colors.white10
+                                              : Colors.grey[200]!,
                                         ),
                                       ),
                                       child: IconButton(
                                         icon: Icon(
-                                          _isGridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
-                                          color: isDark ? Colors.white : Colors.black87,
+                                          _isGridView
+                                              ? Icons.view_list_rounded
+                                              : Icons.grid_view_rounded,
+                                          color: isDark
+                                              ? Colors.white
+                                              : Colors.black87,
                                         ),
                                         onPressed: () {
                                           final newValue = !_isGridView;
-                                          setState(() => _isGridView = newValue);
-                                          SettingsController.instance.setGridView(newValue);
+                                          setState(
+                                            () => _isGridView = newValue,
+                                          );
+                                          SettingsController.instance
+                                              .setGridView(newValue);
                                         },
-                                        tooltip: _isGridView ? "Tampilan List" : "Tampilan Grid",
+                                        tooltip: _isGridView
+                                            ? "Tampilan List"
+                                            : "Tampilan Grid",
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
 
-                              // Products Filter and Categories logic
+                              // Row 1: Regular categories
                               const SizedBox(height: 12),
                               SizedBox(
                                 height: 100,
-                                child: ListView.builder(
+                                child: ListView(
                                   scrollDirection: Axis.horizontal,
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 24,
                                   ),
-                                  itemCount: _categories.length,
-                                  itemBuilder: (context, index) {
-                                    final cat = _categories[index];
-                                    final isSelected = _selectedCategory == cat;
-                                    return CategoryIconCard(
-                                      label: cat,
-                                      isSelected: isSelected,
-                                      onTap: () {
-                                        setState(
-                                          () => _selectedCategory = isSelected
-                                              ? "Semua"
-                                              : cat,
-                                        );
-                                      },
-                                    );
-                                  },
+                                  children: [
+                                    ..._categories.asMap().entries.map((entry) {
+                                      final cat = entry.value;
+                                      final isSelected =
+                                          _selectedCategory == cat &&
+                                          _selectedPromoIndex == -1;
+                                      return CategoryIconCard(
+                                        label: cat,
+                                        isSelected: isSelected,
+                                        onTap: () {
+                                          setState(() {
+                                            _selectedCategory = isSelected
+                                                ? "Semua"
+                                                : cat;
+                                            _selectedPromoIndex = -1;
+                                          });
+                                        },
+                                      );
+                                    }),
+                                  ],
                                 ),
                               ),
+
+                              // Row 2: Promo chips (only shown when promos exist)
+                              if (_promoCategories.isNotEmpty) ...[
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    24,
+                                    6,
+                                    24,
+                                    0,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.local_offer_rounded,
+                                        size: 12,
+                                        color: Colors.grey[500],
+                                      ),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        'Promo aktif',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 11,
+                                          color: Colors.grey[500],
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                SizedBox(
+                                  height: 40,
+                                  child: ListView(
+                                    scrollDirection: Axis.horizontal,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                    ),
+                                    children: [
+                                      ..._promoCategories.asMap().entries.map((
+                                        entry,
+                                      ) {
+                                        final i = entry.key;
+                                        final p = entry.value;
+                                        final promoColor =
+                                            _promoColors[i %
+                                                _promoColors.length];
+                                        final isPromoSelected =
+                                            _selectedPromoIndex == i;
+                                        final valueStr =
+                                            p['discountType'] == 'percentage'
+                                            ? '${(p['value'] as double).toStringAsFixed(0)}% OFF'
+                                            : 'Diskon';
+                                        return Padding(
+                                          padding: const EdgeInsets.only(
+                                            right: 8,
+                                          ),
+                                          child: GestureDetector(
+                                            onTap: () => setState(() {
+                                              _selectedPromoIndex =
+                                                  isPromoSelected ? -1 : i;
+                                              if (!isPromoSelected) {
+                                                _selectedCategory = "Semua";
+                                              }
+                                            }),
+                                            child: AnimatedContainer(
+                                              duration: const Duration(
+                                                milliseconds: 200,
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 6,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: isPromoSelected
+                                                    ? promoColor
+                                                    : promoColor.withValues(
+                                                        alpha: 0.1,
+                                                      ),
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                                border: Border.all(
+                                                  color: promoColor,
+                                                  width: 1.5,
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    Icons.local_offer_rounded,
+                                                    size: 12,
+                                                    color: isPromoSelected
+                                                        ? Colors.white
+                                                        : promoColor,
+                                                  ),
+                                                  const SizedBox(width: 5),
+                                                  Text(
+                                                    '${p['name']}  ·  $valueStr',
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: isPromoSelected
+                                                          ? Colors.white
+                                                          : promoColor,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      }),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                              ],
 
                               // Product Filter Tabs (Popular/Recent)
                               Padding(
@@ -623,21 +872,47 @@ class _KasirPageState extends State<KasirPage> {
                               ),
 
                               Expanded(
-                                child: ProductGrid(
-                                  storeId: _storeId!,
-                                  searchQuery: _searchQuery,
-                                  categoryFilter: _selectedCategory == "Semua"
-                                      ? "Semua"
-                                      : _categoryMap[_selectedCategory],
-                                  filterType:
-                                      _selectedFilter, // Need to implement this in ProductGrid
-                                  isGridView: _isGridView,
-                                  onItemTap: (Product product) {
-                                    _handleProductSelection(product);
-                                    setState(() {});
-                                  },
-                                  actionBuilder: (context, Product p) =>
-                                      _buildActionIcon(p),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildNewArrivalsStrip(),
+                                    Expanded(
+                                      child: ProductGrid(
+                                        storeId: _storeId!,
+                                        searchQuery: _searchQuery,
+                                        categoryFilter: _selectedPromoIndex >= 0
+                                            ? null
+                                            : (_selectedCategory == "Semua"
+                                                  ? "Semua"
+                                                  : _categoryMap[_selectedCategory]),
+                                        promoProductIds:
+                                            _selectedPromoIndex >= 0
+                                            ? (_promoCategories[_selectedPromoIndex]['isAllProducts']
+                                                      as bool
+                                                  ? null
+                                                  : _promoCategories[_selectedPromoIndex]['productIds']
+                                                        as Set<String>)
+                                            : null,
+                                        promoCategoryIds:
+                                            _selectedPromoIndex >= 0
+                                            ? (_promoCategories[_selectedPromoIndex]['isAllProducts']
+                                                      as bool
+                                                  ? null
+                                                  : _promoCategories[_selectedPromoIndex]['categoryIds']
+                                                        as Set<String>)
+                                            : null,
+                                        filterType: _selectedFilter,
+                                        salesMap: _salesMap,
+                                        isGridView: _isGridView,
+                                        onItemTap: (Product product) {
+                                          _handleProductSelection(product);
+                                          setState(() {});
+                                        },
+                                        actionBuilder: (context, Product p) =>
+                                            _buildActionIcon(p),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -650,13 +925,17 @@ class _KasirPageState extends State<KasirPage> {
                           decoration: BoxDecoration(
                             border: Border(
                               left: BorderSide(
-                                color: isDark ? Colors.white10 : Colors.grey[200]!,
+                                color: isDark
+                                    ? Colors.white10
+                                    : Colors.grey[200]!,
                               ),
                             ),
                           ),
                           child: CartSidebar(
                             searchController: _searchController,
-                            onSearchChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
+                            onSearchChanged: (val) => setState(
+                              () => _searchQuery = val.toLowerCase(),
+                            ),
                             onSearchSubmitted: _searchAndAddBySku,
                             onSearchClear: () {
                               setState(() {
@@ -697,6 +976,17 @@ class _KasirPageState extends State<KasirPage> {
                               });
                               _processCheckout();
                             },
+                            onAbortTransaction: () {
+                              setState(() {
+                                _cartItems.clear();
+                                _cashReceived = 0;
+                                _discountData = {
+                                  'total_discount': 0.0,
+                                  'promo_count': 0,
+                                  'promo_names': [],
+                                };
+                              });
+                            },
                           ),
                         ),
                       ),
@@ -704,63 +994,72 @@ class _KasirPageState extends State<KasirPage> {
                   );
                 }
 
-                  // Mobile Layout
-                  return Stack(
-                    children: [
-                      Column(
-                        children: [
-                          // Search and Toggle (Mobile)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: BigSearchBar(
-                                    controller: _searchController,
-                                    hintText: "Cari menu...",
-                                    onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
-                                    onClear: () {
-                                      setState(() {
-                                        _searchController.clear();
-                                        _searchQuery = "";
-                                      });
-                                    },
+                // Mobile Layout
+                return Stack(
+                  children: [
+                    Column(
+                      children: [
+                        // Search and Toggle (Mobile)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: BigSearchBar(
+                                  controller: _searchController,
+                                  hintText: "Cari menu...",
+                                  onChanged: (val) => setState(
+                                    () => _searchQuery = val.toLowerCase(),
                                   ),
+                                  onClear: () {
+                                    setState(() {
+                                      _searchController.clear();
+                                      _searchQuery = "";
+                                    });
+                                  },
                                 ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: isDark ? Colors.white10 : Colors.grey[100],
-                                    borderRadius: BorderRadius.circular(15),
-                                  ),
-                                  child: IconButton(
-                                    icon: Icon(
-                                      _isGridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
-                                      color: isDark ? Colors.white : Colors.black87,
-                                      size: 20,
-                                    ),
-                                    onPressed: () {
-                                      final newValue = !_isGridView;
-                                      setState(() => _isGridView = newValue);
-                                      SettingsController.instance.setGridView(newValue);
-                                    },
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          // Categories
-                          SizedBox(
-                            height: 60,
-                            child: ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
                               ),
-                              itemCount: _categories.length,
-                              itemBuilder: (context, index) {
-                                final cat = _categories[index];
-                                final isSelected = _selectedCategory == cat;
+                              const SizedBox(width: 8),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? Colors.white10
+                                      : Colors.grey[100],
+                                  borderRadius: BorderRadius.circular(15),
+                                ),
+                                child: IconButton(
+                                  icon: Icon(
+                                    _isGridView
+                                        ? Icons.view_list_rounded
+                                        : Icons.grid_view_rounded,
+                                    color: isDark
+                                        ? Colors.white
+                                        : Colors.black87,
+                                    size: 20,
+                                  ),
+                                  onPressed: () {
+                                    final newValue = !_isGridView;
+                                    setState(() => _isGridView = newValue);
+                                    SettingsController.instance.setGridView(
+                                      newValue,
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Row 1: Regular category chips (mobile)
+                        SizedBox(
+                          height: 44,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            children: [
+                              ..._categories.map((cat) {
+                                final isSelected =
+                                    _selectedCategory == cat &&
+                                    _selectedPromoIndex == -1;
                                 return Padding(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 4,
@@ -773,6 +1072,7 @@ class _KasirPageState extends State<KasirPage> {
                                         _selectedCategory = selected
                                             ? cat
                                             : "Semua";
+                                        _selectedPromoIndex = -1;
                                       });
                                     },
                                     selectedColor: _primaryColor,
@@ -785,6 +1085,7 @@ class _KasirPageState extends State<KasirPage> {
                                       fontWeight: isSelected
                                           ? FontWeight.bold
                                           : FontWeight.normal,
+                                      fontSize: 12,
                                     ),
                                     backgroundColor: isDark
                                         ? Colors.grey[800]
@@ -795,101 +1096,211 @@ class _KasirPageState extends State<KasirPage> {
                                     ),
                                   ),
                                 );
-                              },
-                            ),
+                              }),
+                            ],
                           ),
-                          Expanded(
-                            child: ProductGrid(
-                              storeId: _storeId!,
-                              searchQuery: _searchQuery,
-                              categoryFilter: _selectedCategory == "Semua"
-                                  ? "Semua"
-                                  : _categoryMap[_selectedCategory],
-                              isGridView: _isGridView,
-                              onItemTap: (Product product) {
-                                _handleProductSelection(product);
-                                setState(() {});
-                              },
-                              actionBuilder: (context, Product p) =>
-                                  _buildActionIcon(p),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (_cartItems.isNotEmpty)
-                        Positioned(
-                          bottom: 30,
-                          left: 20,
-                          right: 20,
-                          child: GestureDetector(
-                            onTap: _showCartSheet,
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: _primaryColor,
-                                borderRadius: BorderRadius.circular(20),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: _primaryColor.withValues(alpha: 0.4),
-                                    blurRadius: 20,
-                                    offset: const Offset(0, 8),
-                                  ),
-                                ],
+                        ),
+
+                        // Row 2: Promo chips (mobile, only when promos exist)
+                        if (_promoCategories.isNotEmpty)
+                          SizedBox(
+                            height: 38,
+                            child: ListView(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
                               ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.2,
+                              children: [
+                                ..._promoCategories.asMap().entries.map((
+                                  entry,
+                                ) {
+                                  final i = entry.key;
+                                  final p = entry.value;
+                                  final promoColor =
+                                      _promoColors[i % _promoColors.length];
+                                  final isPromoSelected =
+                                      _selectedPromoIndex == i;
+                                  final valueStr =
+                                      p['discountType'] == 'percentage'
+                                      ? '${(p['value'] as double).toStringAsFixed(0)}% OFF'
+                                      : 'Diskon';
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: GestureDetector(
+                                      onTap: () => setState(() {
+                                        _selectedPromoIndex = isPromoSelected
+                                            ? -1
+                                            : i;
+                                        if (!isPromoSelected) {
+                                          _selectedCategory = "Semua";
+                                        }
+                                      }),
+                                      child: AnimatedContainer(
+                                        duration: const Duration(
+                                          milliseconds: 200,
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 5,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: isPromoSelected
+                                              ? promoColor
+                                              : promoColor.withValues(
+                                                  alpha: 0.1,
+                                                ),
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
+                                          border: Border.all(
+                                            color: promoColor,
+                                            width: 1.5,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.local_offer_rounded,
+                                              size: 12,
+                                              color: isPromoSelected
+                                                  ? Colors.white
+                                                  : promoColor,
+                                            ),
+                                            const SizedBox(width: 5),
+                                            Text(
+                                              '${p['name']}  ·  $valueStr',
+                                              style: GoogleFonts.inter(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                                color: isPromoSelected
+                                                    ? Colors.white
+                                                    : promoColor,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                      shape: BoxShape.circle,
                                     ),
-                                    child: Text(
-                                      "${_getCartTotalCount()}",
+                                  );
+                                }),
+                              ],
+                            ),
+                          ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildNewArrivalsStrip(),
+                              Expanded(
+                                child: ProductGrid(
+                                  storeId: _storeId!,
+                                  searchQuery: _searchQuery,
+                                  categoryFilter: _selectedPromoIndex >= 0
+                                      ? null
+                                      : (_selectedCategory == "Semua"
+                                            ? "Semua"
+                                            : _categoryMap[_selectedCategory]),
+                                  promoProductIds: _selectedPromoIndex >= 0
+                                      ? (_promoCategories[_selectedPromoIndex]['isAllProducts']
+                                                as bool
+                                            ? null
+                                            : _promoCategories[_selectedPromoIndex]['productIds']
+                                                  as Set<String>)
+                                      : null,
+                                  promoCategoryIds: _selectedPromoIndex >= 0
+                                      ? (_promoCategories[_selectedPromoIndex]['isAllProducts']
+                                                as bool
+                                            ? null
+                                            : _promoCategories[_selectedPromoIndex]['categoryIds']
+                                                  as Set<String>)
+                                      : null,
+                                  salesMap: _salesMap,
+                                  isGridView: _isGridView,
+                                  onItemTap: (Product product) {
+                                    _handleProductSelection(product);
+                                    setState(() {});
+                                  },
+                                  actionBuilder: (context, Product p) =>
+                                      _buildActionIcon(p),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_cartItems.isNotEmpty)
+                      Positioned(
+                        bottom: 30,
+                        left: 20,
+                        right: 20,
+                        child: GestureDetector(
+                          onTap: _showCartSheet,
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: _primaryColor,
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: _primaryColor.withValues(alpha: 0.4),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.2),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text(
+                                    "${_getCartTotalCount()}",
+                                    style: GoogleFonts.inter(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      "Total",
                                       style: GoogleFonts.inter(
+                                        color: Colors.white70,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    Text(
+                                      _currencyFormat.format(_getCartTotal()),
+                                      style: GoogleFonts.poppins(
                                         color: Colors.white,
                                         fontWeight: FontWeight.bold,
+                                        fontSize: 16,
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        "Total",
-                                        style: GoogleFonts.inter(
-                                          color: Colors.white70,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                      Text(
-                                        _currencyFormat.format(_getCartTotal()),
-                                        style: GoogleFonts.poppins(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const Spacer(),
-                                  const Icon(
-                                    Icons.shopping_bag_outlined,
-                                    color: Colors.white,
-                                  ),
-                                ],
-                              ),
+                                  ],
+                                ),
+                                const Spacer(),
+                                const Icon(
+                                  Icons.shopping_bag_outlined,
+                                  color: Colors.white,
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                    ],
-                  );
-                },
+                      ),
+                  ],
+                );
+              },
             ),
     );
   }
@@ -925,6 +1336,204 @@ class _KasirPageState extends State<KasirPage> {
             ),
         ],
       ),
+    );
+  }
+
+  /// Shows a horizontal "New Arrivals" strip with the 5 most recently added products.
+  /// Hidden when the user is searching or has a promo/category filter active.
+  Widget _buildNewArrivalsStrip() {
+    // Hide when filtering — it would be confusing
+    if (_searchQuery.isNotEmpty ||
+        _selectedPromoIndex >= 0 ||
+        _selectedCategory != "Semua") {
+      return const SizedBox.shrink();
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final db = Provider.of<AppDatabase>(context, listen: false);
+
+    return StreamBuilder<List<Product>>(
+      stream:
+          (db.select(db.products)
+                ..where((t) => t.storeId.equals(_storeId ?? ''))
+                ..where((t) => t.isDeleted.equals(false))
+                ..orderBy([
+                  (t) => OrderingTerm(
+                    expression: t.createdAt,
+                    mode: OrderingMode.desc,
+                  ),
+                ])
+                ..limit(8))
+              .watch(),
+      builder: (context, snapshot) {
+        final products = snapshot.data ?? [];
+        if (products.isEmpty) return const SizedBox.shrink();
+
+        final currencyFormat = NumberFormat.currency(
+          locale: 'id',
+          symbol: 'Rp ',
+          decimalDigits: 0,
+        );
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _primaryColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.fiber_new_rounded,
+                          size: 16,
+                          color: _primaryColor,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Baru Ditambahkan',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: _primaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 160,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: products.length,
+                itemBuilder: (context, index) {
+                  final p = products[index];
+                  final isOutOfStock =
+                      p.isStockManaged && (p.stockQuantity ?? 0) <= 0;
+                  return GestureDetector(
+                    onTap: isOutOfStock
+                        ? null
+                        : () {
+                            _handleProductSelection(p);
+                            setState(() {});
+                          },
+                    child: Opacity(
+                      opacity: isOutOfStock ? 0.5 : 1.0,
+                      child: Container(
+                        width: 120,
+                        margin: const EdgeInsets.only(right: 12, bottom: 4),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? const Color(0xFF2C2C2E)
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.06),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Image
+                            ClipRRect(
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(16),
+                              ),
+                              child: Container(
+                                height: 90,
+                                width: double.infinity,
+                                color: isDark
+                                    ? Colors.grey[800]
+                                    : Colors.grey[100],
+                                child: p.imageUrl != null
+                                    ? Image(
+                                        image: FileManager().getImageProvider(
+                                          p.imageUrl!,
+                                        ),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : Icon(
+                                        Icons.fastfood_rounded,
+                                        size: 36,
+                                        color: Colors.grey[400],
+                                      ),
+                              ),
+                            ),
+                            // Info
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    p.name ?? '-',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark
+                                          ? Colors.white
+                                          : Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    currencyFormat.format(p.salePrice ?? 0),
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: _primaryColor,
+                                    ),
+                                  ),
+                                  if (isOutOfStock)
+                                    Text(
+                                      'Habis',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 9,
+                                        color: Colors.red,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+              child: Divider(
+                color: isDark ? Colors.white12 : Colors.grey[200],
+                height: 16,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1039,6 +1648,17 @@ class _KasirPageState extends State<KasirPage> {
                   });
                   Navigator.pop(context);
                   _processCheckout();
+                },
+                onAbortTransaction: () {
+                  setState(() {
+                    _cartItems.clear();
+                    _cashReceived = 0;
+                    _discountData = {
+                      'total_discount': 0.0,
+                      'promo_count': 0,
+                      'promo_names': [],
+                    };
+                  });
                 },
               ),
             ),

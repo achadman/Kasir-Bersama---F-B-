@@ -136,6 +136,7 @@ class PromotionService {
 
     // To prevent stacking (one discount per item)
     final Set<String> globalAppliedCartIds = {};
+    final Map<String, double> itemDiscounts = {};
 
     for (var entry in promoWithItems) {
       final promo = entry['promo'] as Promotion;
@@ -153,13 +154,18 @@ class PromotionService {
             final String cartId = cartItem['cart_id'];
             if (globalAppliedCartIds.contains(cartId)) continue;
 
-            globalAppliedCartIds.add(cartId);
             _applyDiscount(
               cartItem,
               promoValue,
               isPercentage,
               promo.name ?? 'Promo',
-              (disc) => totalDiscount += disc,
+              (disc) {
+                if (disc > 0) {
+                  globalAppliedCartIds.add(cartId);
+                  itemDiscounts[cartId] = disc;
+                  totalDiscount += disc;
+                }
+              },
               (name) {
                 if (!appliedPromoNames.contains(name)) {
                   appliedPromoNames.add(name);
@@ -178,19 +184,28 @@ class PromotionService {
               final Product p = cartItem['product'];
               bool match = false;
 
+              // Check Product match
+              if (pi.productId != null && pi.productId == p.id) {
+                match = true;
+              }
               // Check Category match
-              if (pi.categoryId != null && pi.categoryId == p.categoryId) {
+              else if (pi.categoryId != null && pi.categoryId == p.categoryId) {
                 match = true;
               }
 
               if (match) {
-                globalAppliedCartIds.add(cartId);
                 _applyDiscount(
                   cartItem,
                   promoValue,
                   isPercentage,
                   promo.name ?? 'Promo',
-                  (disc) => totalDiscount += disc,
+                  (disc) {
+                    if (disc > 0) {
+                      globalAppliedCartIds.add(cartId);
+                      itemDiscounts[cartId] = disc;
+                      totalDiscount += disc;
+                    }
+                  },
                   (name) {
                     if (!appliedPromoNames.contains(name)) {
                       appliedPromoNames.add(name);
@@ -208,6 +223,8 @@ class PromotionService {
       'total_discount': totalDiscount,
       'promo_count': appliedPromoNames.length,
       'promo_names': appliedPromoNames,
+      'applied_cart_ids': globalAppliedCartIds.toList(),
+      'item_discounts': itemDiscounts,
     };
   }
 

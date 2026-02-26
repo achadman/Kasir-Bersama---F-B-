@@ -1,10 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
+
 import '../../services/platform/file_manager.dart';
 
-import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../controllers/theme_controller.dart';
 import '../pages/other/printer_settings_page.dart';
@@ -32,8 +31,6 @@ class KasirDrawer extends StatefulWidget {
 }
 
 class _KasirDrawerState extends State<KasirDrawer> {
-  bool _isLoading = false;
-
   Future<void> _updateName() async {
     final adminCtrl = context.read<AdminController>();
     final controller = TextEditingController(text: adminCtrl.userName);
@@ -67,34 +64,6 @@ class _KasirDrawerState extends State<KasirDrawer> {
         ],
       ),
     );
-  }
-
-  Future<void> _updatePhoto() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-
-    if (pickedFile != null) {
-      if (!mounted) return;
-      setState(() => _isLoading = true);
-      try {
-        final adminCtrl = context.read<AdminController>();
-        final fileName =
-            'avatar_${adminCtrl.userId}_${DateTime.now().millisecondsSinceEpoch}${p.extension(pickedFile.path)}';
-
-        String savedPath = await FileManager().saveFile(pickedFile, fileName);
-
-        await adminCtrl.updateProfile(avatarUrl: savedPath);
-      } catch (e) {
-        debugPrint("Upload Error: $e");
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text("Gagal simpan foto: $e")));
-        }
-      } finally {
-        if (context.mounted) setState(() => _isLoading = false);
-      }
-    }
   }
 
   @override
@@ -290,7 +259,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (ctx) => PromotionPage(),
+                              builder: (ctx) => const PromotionPage(),
                             ),
                           );
                         }
@@ -372,7 +341,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
       ),
       child: Column(
         children: [
-        GestureDetector(
+          GestureDetector(
             onTap: () {
               Navigator.pop(context);
               if (widget.onIndexSelected != null) {
@@ -413,8 +382,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                         )
                       : null,
                 ),
-                if (_isLoading)
-                  const Positioned.fill(child: CircularProgressIndicator()),
+
                 Positioned(
                   bottom: 0,
                   right: 0,

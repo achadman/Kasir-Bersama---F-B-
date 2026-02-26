@@ -20,7 +20,9 @@ class CustomNumpad extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final defaultBtnColor = isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100];
+    final defaultBtnColor = isDark
+        ? Colors.white.withValues(alpha: 0.05)
+        : Colors.grey[100]!;
     final defaultTextColor = isDark ? Colors.white : Colors.black87;
 
     return LayoutBuilder(
@@ -45,24 +47,96 @@ class CustomNumpad extends StatelessWidget {
                 child: Column(
                   children: [
                     _buildSquareRow([
-                      _buildGridButton("7", defaultBtnColor!, defaultTextColor, fontSize, iconSize),
-                      _buildGridButton("8", defaultBtnColor, defaultTextColor, fontSize, iconSize),
-                      _buildGridButton("9", defaultBtnColor, defaultTextColor, fontSize, iconSize),
+                      _buildGridButton(
+                        "7",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                        iconSize,
+                      ),
+                      _buildGridButton(
+                        "8",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                        iconSize,
+                      ),
+                      _buildGridButton(
+                        "9",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                        iconSize,
+                      ),
                     ], rowHeight),
                     _buildSquareRow([
-                      _buildGridButton("4", defaultBtnColor, defaultTextColor, fontSize, iconSize),
-                      _buildGridButton("5", defaultBtnColor, defaultTextColor, fontSize, iconSize),
-                      _buildGridButton("6", defaultBtnColor, defaultTextColor, fontSize, iconSize),
+                      _buildGridButton(
+                        "4",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                        iconSize,
+                      ),
+                      _buildGridButton(
+                        "5",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                        iconSize,
+                      ),
+                      _buildGridButton(
+                        "6",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                        iconSize,
+                      ),
                     ], rowHeight),
                     _buildSquareRow([
-                      _buildGridButton("1", defaultBtnColor, defaultTextColor, fontSize, iconSize),
-                      _buildGridButton("2", defaultBtnColor, defaultTextColor, fontSize, iconSize),
-                      _buildGridButton("3", defaultBtnColor, defaultTextColor, fontSize, iconSize),
+                      _buildGridButton(
+                        "1",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                        iconSize,
+                      ),
+                      _buildGridButton(
+                        "2",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                        iconSize,
+                      ),
+                      _buildGridButton(
+                        "3",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                        iconSize,
+                      ),
                     ], rowHeight),
                     _buildSquareRow([
-                      _buildGridButton("0", defaultBtnColor, defaultTextColor, fontSize, iconSize),
-                      _buildGridButton("000", defaultBtnColor, defaultTextColor, fontSize, iconSize),
-                      _buildGridButton(".", defaultBtnColor, defaultTextColor, fontSize, iconSize),
+                      _buildGridButton(
+                        "0",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                        iconSize,
+                      ),
+                      _buildGridButton(
+                        "000",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                        iconSize,
+                      ),
+                      _buildGridButton(
+                        ".",
+                        defaultBtnColor,
+                        defaultTextColor,
+                        fontSize,
+                        iconSize,
+                      ),
                     ], rowHeight),
                   ],
                 ),
@@ -72,8 +146,21 @@ class CustomNumpad extends StatelessWidget {
                 flex: 1,
                 child: Column(
                   children: [
-                    _buildGridButton("C", Colors.red.withOpacity(0.1), Colors.red, fontSize, iconSize),
-                    _buildGridButton("backspace", defaultBtnColor!, defaultTextColor, fontSize, iconSize, icon: Icons.backspace_outlined),
+                    _buildGridButton(
+                      "C",
+                      Colors.red.withValues(alpha: 0.1),
+                      Colors.red,
+                      fontSize,
+                      iconSize,
+                    ),
+                    _buildGridButton(
+                      "backspace",
+                      defaultBtnColor,
+                      defaultTextColor,
+                      fontSize,
+                      iconSize,
+                      icon: Icons.backspace_outlined,
+                    ),
                     _buildConfirmButton(context, confirmIconSize),
                   ],
                 ),
@@ -105,7 +192,7 @@ class CustomNumpad extends StatelessWidget {
     return Expanded(
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(color: tColor.withOpacity(0.08), width: 1.0),
+          border: Border.all(color: tColor.withValues(alpha: 0.08), width: 1.0),
         ),
         child: Material(
           color: color,
@@ -135,7 +222,10 @@ class CustomNumpad extends StatelessWidget {
       flex: 2,
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.0),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.2),
+            width: 1.0,
+          ),
         ),
         child: Material(
           color: primaryColor,
@@ -143,7 +233,11 @@ class CustomNumpad extends StatelessWidget {
           child: InkWell(
             onTap: onConfirm,
             child: Center(
-              child: Icon(Icons.check_circle_outline, color: Colors.white, size: iSize),
+              child: Icon(
+                Icons.check_circle_outline,
+                color: Colors.white,
+                size: iSize,
+              ),
             ),
           ),
         ),
