@@ -3,15 +3,18 @@ import 'package:flutter/material.dart';
 import '../services/app_database.dart';
 import 'package:drift/drift.dart';
 import '../services/promotion_service.dart';
+import '../services/payment_method_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
 class AdminController extends ChangeNotifier {
   final AppDatabase _db;
   late final PromotionService _promotionService;
+  late final PaymentMethodService _paymentMethodService;
 
   AdminController(this._db) {
     _promotionService = PromotionService(_db);
+    _paymentMethodService = PaymentMethodService(_db);
   }
 
   String? _userId;
@@ -55,6 +58,7 @@ class AdminController extends ChangeNotifier {
   int get transactionCount => _transactionCount;
   AppDatabase? get database => _db;
   PromotionService get promotionService => _promotionService;
+  PaymentMethodService get paymentMethodService => _paymentMethodService;
   List<Category> get categories => _categories;
   List<Product> get products => _products;
 

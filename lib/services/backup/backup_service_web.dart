@@ -4,7 +4,7 @@ class BackupService {
   BackupService(AppDatabase _);
 
   /// Creates a full backup (DB + Images) as a ZIP file.
-  Future<String?> createFullBackup() async {
+  Future<String?> createFullBackup({bool share = true}) async {
     // Web implementation stub
     return null;
   }

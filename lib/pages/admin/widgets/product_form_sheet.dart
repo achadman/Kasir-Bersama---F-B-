@@ -478,12 +478,14 @@ class _ProductFormSheetState extends State<ProductFormSheet> {
                                 )
                               : (_currentImageUrl != null
                                     ? DecorationImage(
-                                        image: NetworkImage(_currentImageUrl!),
+                                        image: FileManager().getImageProvider(
+                                          _currentImageUrl!,
+                                        ),
                                         fit: BoxFit.cover,
                                       )
                                     : null),
                           border: Border.all(
-                            color: Colors.grey.withValues(alpha: 0.3),
+                            color: Colors.grey.withOpacity(0.3),
                           ),
                         ),
                         child: (_imageFile == null && _currentImageUrl == null)

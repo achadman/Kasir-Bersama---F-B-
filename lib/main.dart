@@ -55,9 +55,6 @@ void main() async {
   // Initialize Localization
   await initializeDateFormatting('id', null);
 
-  // Initialize Bluetooth Printer
-  await BluetoothPrinterService().init();
-
   runApp(
     Provider<AppDatabase>(
       create: (context) => db,

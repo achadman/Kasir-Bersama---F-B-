@@ -94,7 +94,7 @@ class BackupService {
         if (await file.exists()) {
           // We copy the file into images/filename.ext
           // On restore, we'll strip the old absolute path prefix and replace with new one.
-          final filename = p.basename(path);
+          final filename = path.split(RegExp(r'[/\\]')).last;
           await file.copy(p.join(imagesDir.path, filename));
           copiedCount++;
         }
@@ -229,28 +229,33 @@ class BackupService {
           String colName,
           String idCol,
         ) async {
-          // Select all rows where column is not null
-          final result = await executor.runSelect(
-            'SELECT $idCol, $colName FROM $tableName WHERE $colName IS NOT NULL',
-            [],
-          );
+          try {
+            // Select all rows where column is not null
+            final result = await executor.runSelect(
+              'SELECT $idCol, $colName FROM $tableName WHERE $colName IS NOT NULL',
+              [],
+            );
 
-          for (final row in result) {
-            final id = row[idCol];
-            final oldPath = row[colName] as String;
+            for (final row in result) {
+              final id = row[idCol];
+              final oldPath = row[colName] as String;
 
-            // Skip http/https URLs
-            if (oldPath.toLowerCase().startsWith('http')) continue;
+              // Skip http/https URLs
+              if (oldPath.toLowerCase().startsWith('http')) continue;
 
-            final filename = p.basename(oldPath);
-            final newPath = p.join(appDir.path, filename);
+              // Handle both forward and backward slashes for cross-platform backup/restore
+              final filename = oldPath.split(RegExp(r'[/\\]')).last;
+              final newPath = p.join(appDir.path, filename);
 
-            if (oldPath != newPath) {
-              await executor.runUpdate(
-                'UPDATE $tableName SET $colName = ? WHERE $idCol = ?',
-                [newPath, id],
-              );
+              if (oldPath != newPath) {
+                await executor.runUpdate(
+                  'UPDATE $tableName SET $colName = ? WHERE $idCol = ?',
+                  [newPath, id],
+                );
+              }
             }
+          } catch (e) {
+            debugPrint("Restore: skipping table $tableName: $e");
           }
         }
 
@@ -263,9 +268,7 @@ class BackupService {
 
         debugPrint("Restore: Image paths updated successfully.");
       } catch (e) {
-        debugPrint("Restore: Failed to update image paths: $e");
-        // Don't fail the whole restore, just log.
-        // Images might be broken but data is there.
+        debugPrint("Restore: General error during path fix: $e");
       } finally {
         await executor.close();
       }
@@ -296,5 +299,5 @@ class _QueryExecutorUser extends QueryExecutorUser {
     OpeningDetails details,
   ) async {}
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 5;
 }

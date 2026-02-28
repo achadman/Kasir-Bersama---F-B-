@@ -97,93 +97,117 @@ class AdminNavigationRail extends StatelessWidget {
                 child: Column(
                   children: [
                     _buildRailItem(
+                      context: context,
                       index: 0,
                       icon: CupertinoIcons.square_grid_2x2_fill,
                       label: "Dashboard",
                       isActive: selectedIndex == 0,
+                      itemColor: const Color(0xFF3498DB),
                     ),
                     if (_hasPerm('manage_inventory'))
                       _buildRailItem(
+                        context: context,
                         index: 1,
                         icon: CupertinoIcons.cube_box_fill,
                         label: "Barang",
                         isActive: selectedIndex == 1,
+                        itemColor: const Color(0xFF2ECC71),
                       ),
                     if (_hasPerm('manage_categories'))
                       _buildRailItem(
+                        context: context,
                         index: 2,
                         icon: CupertinoIcons.grid,
                         label: "Kategori",
                         isActive: selectedIndex == 2,
+                        itemColor: const Color(0xFF9B59B6),
                       ),
                     if (_hasPerm('pos_access'))
                       _buildRailItem(
+                        context: context,
                         index: 3,
                         icon: CupertinoIcons.cart_fill,
                         label: "Kasir",
                         isActive: selectedIndex == 3,
+                        itemColor: const Color(0xFFEA5700),
                       ),
                     if (_hasPerm('view_history'))
                       _buildRailItem(
+                        context: context,
                         index: 4,
                         icon: CupertinoIcons.doc_text_fill,
                         label: "Riwayat",
                         isActive: selectedIndex == 4,
+                        itemColor: const Color(0xFF1ABC9C),
                       ),
                     if (role?.toLowerCase() == 'owner' ||
                         role?.toLowerCase() == 'admin')
                       _buildRailItem(
+                        context: context,
                         index: 5,
                         icon: CupertinoIcons.person_2_fill,
                         label: "Karyawan",
                         isActive: selectedIndex == 5,
+                        itemColor: const Color(0xFFE91E63),
                       ),
                     if (role?.toLowerCase() == 'owner' ||
                         role?.toLowerCase() == 'admin' ||
                         _hasPerm('view_reports'))
                       _buildRailItem(
+                        context: context,
                         index: 6,
                         icon: CupertinoIcons.graph_square_fill,
                         label: "Analitik",
                         isActive: selectedIndex == 6,
+                        itemColor: const Color(0xFF00BCD4),
                       ),
                     if (role?.toLowerCase() == 'owner' ||
                         role?.toLowerCase() == 'admin' ||
                         _hasPerm('view_reports'))
                       _buildRailItem(
+                        context: context,
                         index: 11,
                         icon: CupertinoIcons.graph_circle_fill,
                         label: "Laba Rugi",
                         isActive: selectedIndex == 11,
+                        itemColor: const Color(0xFF6C5CE7),
                       ),
                     _buildRailItem(
+                      context: context,
                       index: 12,
                       icon: CupertinoIcons.person_crop_circle_fill,
                       label: "Pelanggan",
                       isActive: selectedIndex == 12,
+                      itemColor: const Color(0xFFF1C40F),
                     ),
                     if (role?.toLowerCase() == 'owner' ||
                         role?.toLowerCase() == 'admin' ||
                         _hasPerm('view_reports'))
                       _buildRailItem(
+                        context: context,
                         index: 10,
                         icon: CupertinoIcons.cloud_download_fill,
                         label: "Data & Stok",
                         isActive: selectedIndex == 10,
+                        itemColor: const Color(0xFFE17055),
                       ),
                     if (_hasPerm('manage_printer'))
                       _buildRailItem(
+                        context: context,
                         index: 7,
                         icon: CupertinoIcons.printer_fill,
                         label: "Printer",
                         isActive: selectedIndex == 7,
+                        itemColor: const Color(0xFF636E72),
                       ),
                     if (_hasPerm('manage_promotions'))
                       _buildRailItem(
+                        context: context,
                         index: 9,
                         icon: CupertinoIcons.percent,
                         label: "Promosi",
                         isActive: selectedIndex == 9,
+                        itemColor: const Color(0xFFD63031),
                       ),
                   ],
                 ),
@@ -224,62 +248,71 @@ class AdminNavigationRail extends StatelessWidget {
   }
 
   Widget _buildRailItem({
+    required BuildContext context,
     required int index,
     required IconData icon,
     required String label,
     required bool isActive,
+    required Color itemColor,
   }) {
-    const primaryColor = Color(0xFFEA5700);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => onDestinationSelected(index),
-          borderRadius: BorderRadius.circular(12),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: isActive ? primaryColor : Colors.transparent,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: isActive
-                        ? [
-                            BoxShadow(
-                              color: primaryColor.withValues(alpha: 0.4),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
-                          ]
-                        : [],
-                  ),
-                  child: Icon(
-                    icon,
-                    color: isActive ? Colors.white : Colors.grey[400],
-                    size: 22,
-                  ),
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      child: InkWell(
+        onTap: () => onDestinationSelected(index),
+        borderRadius: BorderRadius.circular(20),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isActive
+                ? itemColor.withValues(alpha: 0.08)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: isActive
+                      ? itemColor
+                      : (isDark ? Colors.white12 : Colors.grey[100]),
+                  shape: BoxShape.circle,
+                  boxShadow: isActive
+                      ? [
+                          BoxShadow(
+                            color: itemColor.withValues(alpha: 0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ]
+                      : [],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  label,
-                  style: GoogleFonts.inter(
-                    fontSize: 9,
-                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-                    color: isActive ? primaryColor : Colors.grey[600],
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Icon(
+                  icon,
+                  color: isActive ? Colors.white : Colors.grey[500],
+                  size: 24,
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 10.5,
+                  fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                  color: isActive ? itemColor : Colors.grey[600],
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
         ),
       ),

@@ -33,7 +33,9 @@ class _PromotionPageState extends State<PromotionPage> {
   }
 
   Future<void> _loadAndCleanPromos() async {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
     setState(() => _isLoading = true);
     final controller = Provider.of<AdminController>(context, listen: false);
     if (controller.storeId == null) {
@@ -54,11 +56,12 @@ class _PromotionPageState extends State<PromotionPage> {
     final cleaned = await controller.promotionService.getAllPromotions(
       controller.storeId!,
     );
-    if (mounted)
+    if (mounted) {
       setState(() {
         _promos = cleaned;
         _isLoading = false;
       });
+    }
   }
 
   @override
@@ -399,22 +402,18 @@ class _PromotionPageState extends State<PromotionPage> {
     Promotion promo,
     AdminController controller,
   ) async {
-    final confirm = await showCupertinoDialog<bool>(
+    final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('Hapus Promosi'),
-        content: Text('Apakah Anda yakin ingin menghapus "${promo.name}"?'),
-        actions: [
-          CupertinoDialogAction(
-            child: const Text('Batal'),
-            onPressed: () => Navigator.pop(context, false),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Hapus'),
-          ),
-        ],
+      builder: (context) => AsriDialog(
+        title: 'Hapus Promosi',
+        message:
+            'Apakah Anda yakin ingin menghapus "${promo.name}"? Promosi yang dihapus tidak dapat dipulihkan.',
+        icon: CupertinoIcons.trash_fill,
+        iconColor: Colors.redAccent,
+        primaryActionLabel: "Hapus",
+        isDestructive: true,
+        onPrimaryAction: () => Navigator.pop(context, true),
+        secondaryActionLabel: "Batal",
       ),
     );
 

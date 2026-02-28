@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../controllers/admin_controller.dart';
 import '../../../services/app_database.dart';
+import '../../../widgets/asri_dialog.dart';
 
 class PromotionFormSheet extends StatefulWidget {
   final Promotion? existingPromo;
@@ -607,40 +608,57 @@ class _PromotionFormSheetState extends State<PromotionFormSheet> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Pilih Kategori'),
+            return AsriDialog(
+              title: 'Pilih Kategori',
+              icon: Icons.category_rounded,
+              iconColor: Theme.of(context).primaryColor,
               content: SizedBox(
                 width: double.maxFinite,
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: categories.length,
-                  itemBuilder: (context, index) {
-                    final cat = categories[index];
-                    final isSelected = _selectedCategoryIds.contains(cat.id);
-                    return CheckboxListTile(
-                      title: Text(cat.name ?? 'Tanpa Nama'),
-                      value: isSelected,
-                      onChanged: (val) {
-                        setDialogState(() {
-                          if (val == true) {
-                            _selectedCategoryIds.add(cat.id);
-                            _categoryNames[cat.id] = cat.name ?? 'Cat';
-                          } else {
-                            _selectedCategoryIds.remove(cat.id);
-                          }
-                        });
-                        setState(() {});
-                      },
-                    );
-                  },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Divider(),
+                    SizedBox(
+                      height: 250,
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: categories.length,
+                        separatorBuilder: (c, i) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final cat = categories[index];
+                          final isSelected = _selectedCategoryIds.contains(
+                            cat.id,
+                          );
+                          return CheckboxListTile(
+                            title: Text(
+                              cat.name ?? 'Tanpa Nama',
+                              style: GoogleFonts.inter(fontSize: 14),
+                            ),
+                            value: isSelected,
+                            activeColor: Theme.of(context).primaryColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            onChanged: (val) {
+                              setDialogState(() {
+                                if (val == true) {
+                                  _selectedCategoryIds.add(cat.id);
+                                  _categoryNames[cat.id] = cat.name ?? 'Cat';
+                                } else {
+                                  _selectedCategoryIds.remove(cat.id);
+                                }
+                              });
+                              setState(() {});
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Selesai'),
-                ),
-              ],
+              primaryActionLabel: 'Selesai',
+              onPrimaryAction: () => Navigator.pop(context),
             );
           },
         );

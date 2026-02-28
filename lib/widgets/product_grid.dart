@@ -24,6 +24,9 @@ class ProductGrid extends StatelessWidget {
   /// productId -> totalUnitsSold; used for accurate Popular sort.
   final Map<String, int>? salesMap;
 
+  /// List of product IDs sold in the current session for "Recent" filter
+  final List<String>? recentProductIds;
+
   const ProductGrid({
     super.key,
     required this.storeId,
@@ -37,6 +40,7 @@ class ProductGrid extends StatelessWidget {
     this.promoProductIds,
     this.promoCategoryIds,
     this.salesMap,
+    this.recentProductIds,
   });
 
   @override
@@ -99,8 +103,20 @@ class ProductGrid extends StatelessWidget {
         }).toList();
 
         // 2. Sort
-        if (filterType == "Recent") {
-          // Most recently *created* product first
+        if (filterType == "Recent" && recentProductIds != null) {
+          // Filter to only show products that were sold in this session
+          filteredProducts = filteredProducts
+              .where((p) => recentProductIds!.contains(p.id))
+              .toList();
+
+          // Sort by the order in recentProductIds (maintains "most recently sold" first)
+          filteredProducts.sort((a, b) {
+            final indexA = recentProductIds!.indexOf(a.id);
+            final indexB = recentProductIds!.indexOf(b.id);
+            return indexA.compareTo(indexB);
+          });
+        } else if (filterType == "Recent") {
+          // Fallback to createdAt if no session data (old behavior or just in case)
           filteredProducts.sort((a, b) {
             final da = a.createdAt ?? DateTime(2000);
             final db = b.createdAt ?? DateTime(2000);
@@ -142,12 +158,12 @@ class ProductGrid extends StatelessWidget {
         if (isGridView) {
           return LayoutBuilder(
             builder: (context, constraints) {
-              final isWide = constraints.maxWidth >= 600;
+              final isWide = constraints.maxWidth >= 500;
               return GridView.builder(
                 padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
                 gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                   maxCrossAxisExtent: isWide ? 160 : 200,
-                  childAspectRatio: isWide ? 0.7 : 0.6,
+                  childAspectRatio: isWide ? 0.62 : 0.6,
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 16,
                 ),
@@ -245,48 +261,57 @@ class ProductGrid extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            p.name ?? 'Tanpa Nama',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.poppins(
-                              fontSize: isWide ? 12 : 14,
-                              fontWeight: FontWeight.w600,
-                              color: textHeading,
+                      Flexible(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              p.name ?? 'Tanpa Nama',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.poppins(
+                                fontSize: isWide ? 12 : 14,
+                                fontWeight: FontWeight.w600,
+                                color: textHeading,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            currencyFormat.format(p.salePrice ?? 0),
-                            style: GoogleFonts.inter(
-                              fontSize: isWide ? 12 : 14,
-                              fontWeight: FontWeight.bold,
-                              color: primaryColor,
+                            const SizedBox(height: 2),
+                            Text(
+                              currencyFormat.format(p.salePrice ?? 0),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(
+                                fontSize: isWide ? 12 : 14,
+                                fontWeight: FontWeight.bold,
+                                color: primaryColor,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           if (isStockManaged)
-                            Text(
-                              isOutOfStock ? "Habis" : "Stok: $stockQty",
-                              style: GoogleFonts.inter(
-                                fontSize: isWide ? 9 : 10,
-                                color: isOutOfStock
-                                    ? Colors.red
-                                    : Colors.grey[600],
-                                fontWeight: isOutOfStock
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
+                            Expanded(
+                              child: Text(
+                                isOutOfStock ? "Habis" : "Stok: $stockQty",
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.inter(
+                                  fontSize: isWide ? 9 : 10,
+                                  color: isOutOfStock
+                                      ? Colors.red
+                                      : Colors.grey[600],
+                                  fontWeight: isOutOfStock
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                ),
                               ),
                             )
                           else
-                            const SizedBox(),
+                            const Spacer(),
                           _buildActionButton(
                             context,
                             p,

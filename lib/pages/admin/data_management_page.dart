@@ -560,174 +560,88 @@ class _DataManagementPageState extends State<DataManagementPage> {
           ? const Center(child: CircularProgressIndicator())
           : LayoutBuilder(
               builder: (context, constraints) {
-                final isWide = constraints.maxWidth >= 720;
-                final crossAxisCount = isWide ? 2 : 1;
-                final childAspectRatio = isWide ? 3.5 : 1.0;
-
                 return ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
                     _buildSectionHeader("EKSPOR & IMPOR DATA"),
-                    if (isWide)
-                      GridView.count(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        crossAxisCount: crossAxisCount,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                        childAspectRatio: childAspectRatio,
-                        children: [
-                          _buildActionCard(
-                            title: "Ekspor Produk",
-                            subtitle: "Simpan semua produk ke Excel (.xlsx)",
-                            description:
-                                "Download seluruh daftar produk Anda ke dalam file Excel. Berguna untuk cadangan data atau pengeditan massal di luar aplikasi.",
-                            icon: CupertinoIcons.cube_box,
-                            color: _colors['export']!,
-                            onTap: _exportProducts,
-                          ),
-                          _buildActionCard(
-                            title: "Impor Produk",
-                            subtitle: "Unggah Excel untuk input barang massal",
-                            description:
-                                "Gunakan template Excel (dari fitur Ekspor) untuk menambah atau memperbarui ribuan produk sekaligus. Sangat cepat untuk stok baru atau perpindahan data.",
-                            icon: CupertinoIcons.cloud_upload,
-                            color: _colors['import']!,
-                            onTap: _handleBulkImport,
-                          ),
-                          _buildActionCard(
-                            title: "Laporan Transaksi",
-                            subtitle: "Ekspor riwayat ke PDF atau Excel",
-                            description:
-                                "Melihat seluruh sejarah penjualan dalam periode tertentu. Bisa disimpan dalam format PDF (cetak) atau Excel (analisis data).",
-                            icon: CupertinoIcons.doc_text,
-                            color: _colors['transactions']!,
-                            onTap: () => _showExportFormatDialog('transaksi'),
-                          ),
-                        ],
-                      )
-                    else ...[
-                      _buildActionCard(
-                        title: "Ekspor Produk",
-                        subtitle: "Simpan semua produk ke Excel (.xlsx)",
-                        description:
-                            "Download seluruh daftar produk Anda ke dalam file Excel. Berguna untuk cadangan data atau pengeditan massal di luar aplikasi.",
-                        icon: CupertinoIcons.cube_box,
-                        color: _colors['export']!,
-                        onTap: _exportProducts,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildActionCard(
-                        title: "Impor Produk",
-                        subtitle: "Unggah Excel untuk input barang massal",
-                        description:
-                            "Gunakan template Excel (dari fitur Ekspor) untuk menambah atau memperbarui ribuan produk sekaligus. Sangat cepat untuk stok baru atau perpindahan data.",
-                        icon: CupertinoIcons.cloud_upload,
-                        color: _colors['import']!,
-                        onTap: _handleBulkImport,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildActionCard(
-                        title: "Laporan Transaksi",
-                        subtitle: "Ekspor riwayat ke PDF atau Excel",
-                        description:
-                            "Melihat seluruh sejarah penjualan dalam periode tertentu. Bisa disimpan dalam format PDF (cetak) atau Excel (analisis data).",
-                        icon: CupertinoIcons.doc_text,
-                        color: _colors['transactions']!,
-                        onTap: () => _showExportFormatDialog('transaksi'),
-                      ),
-                    ],
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 16,
+                      children: [
+                        _buildActionCard(
+                          title: "Ekspor Produk",
+                          subtitle: "Simpan semua produk ke Excel (.xlsx)",
+                          description:
+                              "Download seluruh daftar produk Anda ke dalam file Excel. Berguna untuk cadangan data atau pengeditan massal di luar aplikasi.",
+                          icon: CupertinoIcons.cube_box,
+                          color: _colors['export']!,
+                          onTap: _exportProducts,
+                        ),
+                        _buildActionCard(
+                          title: "Impor Produk",
+                          subtitle: "Unggah Excel untuk input barang massal",
+                          description:
+                              "Gunakan template Excel (dari fitur Ekspor) untuk menambah atau memperbarui ribuan produk sekaligus. Sangat cepat untuk stok baru atau perpindahan data.",
+                          icon: CupertinoIcons.cloud_upload,
+                          color: _colors['import']!,
+                          onTap: _handleBulkImport,
+                        ),
+                        _buildActionCard(
+                          title: "Laporan Transaksi",
+                          subtitle: "Ekspor riwayat ke PDF atau Excel",
+                          description:
+                              "Melihat seluruh sejarah penjualan dalam periode tertentu. Bisa disimpan dalam format PDF (cetak) atau Excel (analisis data).",
+                          icon: CupertinoIcons.doc_text,
+                          color: _colors['transactions']!,
+                          onTap: () => _showExportFormatDialog('transaksi'),
+                        ),
+                      ],
+                    ),
 
                     const SizedBox(height: 32),
                     _buildSectionHeader("MANAJEMEN STOK"),
-                    if (isWide)
-                      GridView.count(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        crossAxisCount: crossAxisCount,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                        childAspectRatio: childAspectRatio,
-                        children: [
-                          _buildActionCard(
-                            title: "Restock Semua",
-                            subtitle: "Tambah jumlah stok ke seluruh barang",
-                            description:
-                                "Menambah jumlah stok yang sama ke SELURUH produk yang stoknya dikelola (Terbatas). Contoh: Menambah 10 ke semua barang.",
-                            icon: Icons.playlist_add_check_rounded,
-                            color: _colors['restock']!,
-                            onTap: _handleRestockAll,
-                          ),
-                          _buildActionCard(
-                            title: "Restock per Kategori",
-                            subtitle: "Pilih kategori untuk ditambah stoknya",
-                            description:
-                                "Menambah stok hanya untuk kategori tertentu. Misal: Menambah 20 stok khusus untuk kategori 'Minuman'.",
-                            icon: CupertinoIcons.square_grid_2x2,
-                            color: _colors['category']!,
-                            onTap: _handleRestockByCategory,
-                          ),
-                          _buildActionCard(
-                            title: "Kosongkan Semua Stok",
-                            subtitle: "Setel semua stok barang menjadi 0",
-                            description:
-                                "Mengubah seluruh jumlah stok produk (Terbatas) menjadi 0. Biasanya digunakan saat ingin melakukan stok opname dari awal.",
-                            icon: Icons.delete_sweep_rounded,
-                            color: _colors['danger']!,
-                            onTap: () => _handleEmptyStock(true),
-                          ),
-                          _buildActionCard(
-                            title: "Kosongkan Stok Kategori",
-                            subtitle: "Setel stok kategori tertentu menjadi 0",
-                            description:
-                                "Mengubah stok produk dalam kategori pilihan menjadi 0 tanpa mempengaruhi kategori lain.",
-                            icon: Icons.delete_outline_rounded,
-                            color: _colors['danger']!.withValues(alpha: 0.8),
-                            onTap: () => _handleEmptyStock(false),
-                          ),
-                        ],
-                      )
-                    else ...[
-                      _buildActionCard(
-                        title: "Restock Semua",
-                        subtitle: "Tambah jumlah stok ke seluruh barang",
-                        description:
-                            "Menambah jumlah stok yang sama ke SELURUH produk yang stoknya dikelola (Terbatas). Contoh: Menambah 10 ke semua barang.",
-                        icon: Icons.playlist_add_check_rounded,
-                        color: _colors['restock']!,
-                        onTap: _handleRestockAll,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildActionCard(
-                        title: "Restock per Kategori",
-                        subtitle: "Pilih kategori untuk ditambah stoknya",
-                        description:
-                            "Menambah stok hanya untuk kategori tertentu. Misal: Menambah 20 stok khusus untuk kategori 'Minuman'.",
-                        icon: CupertinoIcons.square_grid_2x2,
-                        color: _colors['category']!,
-                        onTap: _handleRestockByCategory,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildActionCard(
-                        title: "Kosongkan Semua Stok",
-                        subtitle: "Setel semua stok barang menjadi 0",
-                        description:
-                            "Mengubah seluruh jumlah stok produk (Terbatas) menjadi 0. Biasanya digunakan saat ingin melakukan stok opname dari awal.",
-                        icon: Icons.delete_sweep_rounded,
-                        color: _colors['danger']!,
-                        onTap: () => _handleEmptyStock(true),
-                      ),
-                      const SizedBox(height: 12),
-                      _buildActionCard(
-                        title: "Kosongkan Stok Kategori",
-                        subtitle: "Setel stok kategori tertentu menjadi 0",
-                        description:
-                            "Mengubah stok produk dalam kategori pilihan menjadi 0 tanpa mempengaruhi kategori lain.",
-                        icon: Icons.delete_outline_rounded,
-                        color: _colors['danger']!.withValues(alpha: 0.8),
-                        onTap: () => _handleEmptyStock(false),
-                      ),
-                    ],
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 16,
+                      children: [
+                        _buildActionCard(
+                          title: "Restock Semua",
+                          subtitle: "Tambah jumlah stok ke seluruh barang",
+                          description:
+                              "Menambah jumlah stok yang sama ke SELURUH produk yang stoknya dikelola (Terbatas). Contoh: Menambah 10 ke semua barang.",
+                          icon: Icons.playlist_add_check_rounded,
+                          color: _colors['restock']!,
+                          onTap: _handleRestockAll,
+                        ),
+                        _buildActionCard(
+                          title: "Restock per Kategori",
+                          subtitle: "Pilih kategori untuk ditambah stoknya",
+                          description:
+                              "Menambah stok hanya untuk kategori tertentu. Misal: Menambah 20 stok khusus untuk kategori 'Minuman'.",
+                          icon: CupertinoIcons.square_grid_2x2,
+                          color: _colors['category']!,
+                          onTap: _handleRestockByCategory,
+                        ),
+                        _buildActionCard(
+                          title: "Kosongkan Semua Stok",
+                          subtitle: "Setel semua stok barang menjadi 0",
+                          description:
+                              "Mengubah seluruh jumlah stok produk (Terbatas) menjadi 0. Biasanya digunakan saat ingin melakukan stok opname dari awal.",
+                          icon: Icons.delete_sweep_rounded,
+                          color: _colors['danger']!,
+                          onTap: () => _handleEmptyStock(true),
+                        ),
+                        _buildActionCard(
+                          title: "Kosongkan Stok Kategori",
+                          subtitle: "Setel stok kategori tertentu menjadi 0",
+                          description:
+                              "Mengubah stok produk dalam kategori pilihan menjadi 0 tanpa mempengaruhi kategori lain.",
+                          icon: Icons.delete_outline_rounded,
+                          color: _colors['danger']!.withValues(alpha: 0.8),
+                          onTap: () => _handleEmptyStock(false),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 20),
                   ],
                 );
@@ -760,51 +674,92 @@ class _DataManagementPageState extends State<DataManagementPage> {
     required VoidCallback onTap,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: color.withValues(alpha: 0.1)),
-      ),
-      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        leading: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Icon(icon, color: color),
-        ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
-              ),
-            ),
-            IconButton(
-              icon: Icon(
-                CupertinoIcons.info_circle,
-                size: 18,
-                color: color.withValues(alpha: 0.6),
-              ),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              onPressed: () =>
-                  _showFeatureInfo(title, description, icon, color),
-              tooltip: "Tentang fitur ini",
+    final width = MediaQuery.of(context).size.width;
+    // Calculate card width based on screen size
+    final cardWidth = width > 1200
+        ? (width - 100) / 3
+        : (width > 720 ? (width - 80) / 2 : double.infinity);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        width: cardWidth,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: color.withValues(alpha: 0.08)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
-        subtitle: Text(
-          subtitle,
-          style: GoogleFonts.inter(fontSize: 11, color: Colors.grey),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Icon(icon, color: color, size: 26),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () =>
+                            _showFeatureInfo(title, description, icon, color),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Icon(
+                          CupertinoIcons.info_circle,
+                          size: 16,
+                          color: color.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: Colors.grey[500],
+                      height: 1.3,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              CupertinoIcons.chevron_right,
+              size: 14,
+              color: Colors.grey.withValues(alpha: 0.3),
+            ),
+          ],
         ),
-        trailing: const Icon(CupertinoIcons.chevron_right, size: 16),
-        onTap: onTap,
       ),
     );
   }

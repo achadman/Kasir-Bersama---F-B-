@@ -7,6 +7,7 @@ import '../../../services/customer_service.dart';
 import '../../../controllers/admin_controller.dart';
 import 'widgets/pinterest_card.dart';
 import 'widgets/stat_card.dart';
+import '../../../widgets/asri_dialog.dart';
 
 class CustomerPage extends StatefulWidget {
   final VoidCallback? onMenuPressed;
@@ -53,62 +54,99 @@ class _CustomerPageState extends State<CustomerPage> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          "Tambah Pelanggan Baru",
-          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(labelText: "Nama Lengkap"),
-            ),
-            TextField(
-              controller: phoneController,
-              decoration: const InputDecoration(labelText: "No. HP"),
-              keyboardType: TextInputType.phone,
-            ),
-            TextField(
-              controller: emailController,
-              decoration: const InputDecoration(labelText: "Email"),
-              keyboardType: TextInputType.emailAddress,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Batal"),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (nameController.text.isNotEmpty) {
-                final admin = context.read<AdminController>();
-                await _customerService.addCustomer(
-                  storeId: admin.storeId!,
-                  name: nameController.text,
-                  phoneNumber: phoneController.text,
-                  email: emailController.text,
-                );
-                if (!context.mounted) return;
-                Navigator.pop(context);
-                _fetchCustomers();
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFEA5700),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return AsriDialog(
+          title: "Tambah Pelanggan Baru",
+          icon: CupertinoIcons.person_add_solid,
+          iconColor: const Color(0xFFEA5700),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildDialogTextField(
+                controller: nameController,
+                label: "Nama Lengkap",
+                icon: CupertinoIcons.person,
+                isDark: isDark,
               ),
-            ),
-            child: const Text("Simpan"),
+              const SizedBox(height: 16),
+              _buildDialogTextField(
+                controller: phoneController,
+                label: "No. HP",
+                icon: CupertinoIcons.phone,
+                isDark: isDark,
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: 16),
+              _buildDialogTextField(
+                controller: emailController,
+                label: "Email",
+                icon: CupertinoIcons.mail,
+                isDark: isDark,
+                keyboardType: TextInputType.emailAddress,
+              ),
+            ],
           ),
-        ],
-      ),
+          primaryActionLabel: "Simpan",
+          onPrimaryAction: () async {
+            if (nameController.text.isNotEmpty) {
+              final admin = context.read<AdminController>();
+              await _customerService.addCustomer(
+                storeId: admin.storeId!,
+                name: nameController.text,
+                phoneNumber: phoneController.text,
+                email: emailController.text,
+              );
+              if (!context.mounted) return;
+              Navigator.pop(context);
+              _fetchCustomers();
+            }
+          },
+          secondaryActionLabel: "Batal",
+        );
+      },
+    );
+  }
+
+  Widget _buildDialogTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required bool isDark,
+    TextInputType? keyboardType,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          style: GoogleFonts.inter(
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+          decoration: InputDecoration(
+            hintText: "Masukkan $label",
+            prefixIcon: Icon(icon, color: const Color(0xFFEA5700), size: 20),
+            filled: true,
+            fillColor: isDark
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.grey[100],
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -317,10 +355,10 @@ class _CustomerPageState extends State<CustomerPage> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
+                  const Icon(
                     CupertinoIcons.star_fill,
                     size: 11,
-                    color: const Color(0xFFEA5700),
+                    color: Color(0xFFEA5700),
                   ),
                   const SizedBox(width: 4),
                   Text(

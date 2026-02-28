@@ -15,6 +15,7 @@ import '../../services/backup_service.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import 'payment_settings_page.dart';
 
 class ProfilePage extends StatefulWidget {
   final String storeId;
@@ -395,7 +396,7 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       final db = context.read<AppDatabase>();
       // share: true triggers the system share-sheet (old method)
-      await BackupService(db).createFullBackup(share: true);
+      await BackupService(db).createFullBackup();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -670,14 +671,31 @@ class _ProfilePageState extends State<ProfilePage> {
                           : null,
                     ),
                   ]),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 30),
+                  _buildSectionTitle(
+                    SettingsController.instance.getString('payment_services'),
+                  ),
+                  _buildMenuSection([
+                    _ProfileMenuItem(
+                      label: SettingsController.instance.getString(
+                        'payment_methods',
+                      ),
+                      icon: CupertinoIcons.creditcard,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              PaymentSettingsPage(storeId: widget.storeId),
+                        ),
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 30),
                   _buildSectionTitle(
                     SettingsController.instance.getString('app_settings'),
                   ),
                   _buildAppSettings(),
-                  const SizedBox(height: 20),
-                  _buildThemeToggle(),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 30),
                   _buildSectionTitle(
                     SettingsController.instance.getString('backup_restore'),
                   ),
@@ -708,6 +726,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ]),
 
+                  const SizedBox(height: 30),
                   _buildSectionTitle(
                     SettingsController.instance.getString('danger_zone'),
                   ), // Zona Berbahaya
@@ -807,9 +826,46 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
 
-                  const SizedBox(
-                    height: 50,
-                  ), // Margin for Android navigation bar
+                  const SizedBox(height: 40),
+                  Text(
+                    "Developed by",
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: Colors.grey[500],
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "Aditya Maulana",
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white70 : Colors.grey[700],
+                        ),
+                      ),
+                      Text(
+                        " & ",
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: Colors.grey[500],
+                        ),
+                      ),
+                      Text(
+                        "Muhammad Parhan",
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white70 : Colors.grey[700],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 40),
                 ],
               ),
             ),
@@ -1130,9 +1186,6 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   // Placeholder for compatibility, logic moved inside _buildAppSettings
-  Widget _buildThemeToggle() {
-    return const SizedBox.shrink();
-  }
 
   Widget _buildSectionTitle(String title) {
     return Padding(

@@ -38,6 +38,9 @@ class _InventoryPageState extends State<InventoryPage> {
 
   // Stock Filter: 'all', 'limited', 'unlimited'
   String _stockFilter = 'all';
+
+  // Sort: 'name_asc', 'stock_asc', 'stock_desc', 'price_asc', 'price_desc'
+  String _sortBy = 'name_asc';
   late BulkImportService _importService;
 
   @override
@@ -117,7 +120,7 @@ class _InventoryPageState extends State<InventoryPage> {
   void _applyFilters() {
     final query = _searchController.text.toLowerCase();
     setState(() {
-      _filteredProducts = _products.where((product) {
+      final list = _products.where((product) {
         final name = product.name.toString().toLowerCase();
         final sku = (product.sku ?? '').toString().toLowerCase();
         final matchesSearch = name.contains(query) || sku.contains(query);
@@ -137,6 +140,23 @@ class _InventoryPageState extends State<InventoryPage> {
 
         return matchesSearch && matchesCategory && matchesStock;
       }).toList();
+
+      // Apply Sort
+      list.sort((a, b) {
+        if (_sortBy == 'stock_asc') {
+          return (a.stockQuantity ?? 0).compareTo(b.stockQuantity ?? 0);
+        } else if (_sortBy == 'stock_desc') {
+          return (b.stockQuantity ?? 0).compareTo(a.stockQuantity ?? 0);
+        } else if (_sortBy == 'price_asc') {
+          return (a.salePrice ?? 0).compareTo(b.salePrice ?? 0);
+        } else if (_sortBy == 'price_desc') {
+          return (b.salePrice ?? 0).compareTo(a.salePrice ?? 0);
+        } else {
+          return (a.name ?? '').compareTo(b.name ?? '');
+        }
+      });
+
+      _filteredProducts = list;
     });
   }
 
@@ -227,62 +247,90 @@ class _InventoryPageState extends State<InventoryPage> {
     required int fail,
     required List<String> errors,
   }) {
-    showCupertinoDialog(
+    showDialog(
       context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: const Text("Hasil Impor"),
+      builder: (ctx) => AsriDialog(
+        title: "Hasil Impor",
+        icon: fail == 0 ? Icons.check_circle_rounded : Icons.info_rounded,
+        iconColor: fail == 0 ? Colors.green : Colors.orange,
         content: Column(
           children: [
-            const SizedBox(height: 10),
-            Text("Berhasil: $success"),
-            Text("Gagal: $fail"),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildStatItem("Berhasil", success.toString(), Colors.green),
+                _buildStatItem("Gagal", fail.toString(), Colors.red),
+              ],
+            ),
             if (errors.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              const Divider(),
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 "Detail Kesalahan:",
-                style: TextStyle(fontWeight: FontWeight.bold),
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
               ),
-              const SizedBox(height: 5),
-              SizedBox(
-                height: 100,
-                child: ListView.builder(
+              const SizedBox(height: 8),
+              Container(
+                height: 120,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ListView.separated(
+                  padding: const EdgeInsets.all(12),
                   itemCount: errors.length,
+                  separatorBuilder: (c, i) => const Divider(height: 8),
                   itemBuilder: (c, i) => Text(
                     errors[i],
-                    style: const TextStyle(fontSize: 12, color: Colors.red),
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: Colors.red[400],
+                    ),
                   ),
                 ),
               ),
             ],
           ],
         ),
-        actions: [
-          CupertinoDialogAction(
-            child: const Text("Tutup"),
-            onPressed: () => Navigator.pop(ctx),
-          ),
-        ],
+        primaryActionLabel: "Tutup",
+        onPrimaryAction: () => Navigator.pop(ctx),
       ),
     );
   }
 
+  Widget _buildStatItem(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: GoogleFonts.poppins(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(label, style: GoogleFonts.inter(fontSize: 12, color: Colors.grey)),
+      ],
+    );
+  }
+
   Future<void> _deleteProduct(String id) async {
-    final confirm = await showCupertinoDialog<bool>(
+    final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: const Text("Hapus Produk?"),
-        content: const Text("Tindakan ini tidak dapat dibatalkan."),
-        actions: [
-          CupertinoDialogAction(
-            child: const Text("Batal"),
-            onPressed: () => Navigator.pop(ctx, false),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Hapus"),
-          ),
-        ],
+      builder: (ctx) => AsriDialog(
+        title: "Hapus Produk?",
+        message:
+            "Tindakan ini tidak dapat dibatalkan dan produk akan dihapus permanent.",
+        icon: CupertinoIcons.trash_fill,
+        iconColor: Colors.redAccent,
+        primaryActionLabel: "Hapus",
+        isDestructive: true,
+        onPrimaryAction: () => Navigator.pop(ctx, true),
+        secondaryActionLabel: "Batal",
       ),
     );
 
@@ -308,21 +356,16 @@ class _InventoryPageState extends State<InventoryPage> {
   Future<void> _emptyAllStock() async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Kosongkan Semua Stok?"),
-        content: const Text(
-          "Semua produk dalam daftar 'Terbatas' akan diubah stoknya menjadi 0.\n\nTindakan ini tidak dapat dibatalkan.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text("Batal"),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Kosongkan", style: TextStyle(color: Colors.red)),
-          ),
-        ],
+      builder: (ctx) => AsriDialog(
+        title: "Kosongkan Semua Stok?",
+        message:
+            "Semua produk dalam daftar 'Terbatas' akan diubah stoknya menjadi 0.\n\nTindakan ini tidak dapat dibatalkan.",
+        icon: Icons.delete_sweep_rounded,
+        iconColor: Colors.redAccent,
+        primaryActionLabel: "Kosongkan",
+        isDestructive: true,
+        onPrimaryAction: () => Navigator.pop(ctx, true),
+        secondaryActionLabel: "Batal",
       ),
     );
 
@@ -368,24 +411,30 @@ class _InventoryPageState extends State<InventoryPage> {
     // Dialog Choice: Fill to Max vs Add Fixed Amount
     final choice = await showDialog<String>(
       context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text("Restock Massal"),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'max'),
-            child: const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: Text("🎯 Penuhi ke Max Stock (Sesuai Limit Produk)"),
+      builder: (ctx) => AsriDialog(
+        title: "Restock Massal",
+        icon: Icons.playlist_add_check_rounded,
+        iconColor: Colors.green,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildChoiceOption(
+              icon: Icons.track_changes_rounded,
+              title: "Penuhi ke Max Stock",
+              subtitle: "Sesuaikan dengan limit produk",
+              onTap: () => Navigator.pop(ctx, 'max'),
+              color: Colors.green,
             ),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'manual'),
-            child: const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: Text("➕ Tambah Jumlah Sama ke Semua"),
+            const SizedBox(height: 12),
+            _buildChoiceOption(
+              icon: Icons.add_circle_outline_rounded,
+              title: "Tambah Jumlah Sama",
+              subtitle: "Tambahkan qty tetap ke semua",
+              onTap: () => Navigator.pop(ctx, 'manual'),
+              color: Colors.blue,
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
 
@@ -397,6 +446,67 @@ class _InventoryPageState extends State<InventoryPage> {
     } else {
       await _addFixedStockToAll();
     }
+  }
+
+  Widget _buildChoiceOption({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.1)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: isDark ? Colors.white54 : Colors.black54,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              CupertinoIcons.chevron_right,
+              size: 14,
+              color: Colors.grey,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _fillToMaxStock() async {
@@ -434,67 +544,97 @@ class _InventoryPageState extends State<InventoryPage> {
     final controller = TextEditingController();
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Tambah Stok Massal"),
-        content: TextField(
+      builder: (ctx) => AsriDialog(
+        title: "Tambah Stok Massal",
+        icon: Icons.add_business_rounded,
+        iconColor: Colors.blue,
+        content: Column(
+          children: [
+            const SizedBox(height: 8),
+            _buildDialogTextField(
+              controller: controller,
+              label: "Jumlah Tambahan",
+              hint: "Misal: 10",
+              prefixIcon: Icons.add_box_rounded,
+            ),
+          ],
+        ),
+        primaryActionLabel: "Simpan",
+        onPrimaryAction: () async {
+          final amount = int.tryParse(controller.text) ?? 0;
+          if (amount <= 0) return;
+          Navigator.pop(ctx);
+          setState(() => _isLoading = true);
+
+          try {
+            final db = Provider.of<AppDatabase>(context, listen: false);
+            for (var p in _filteredProducts) {
+              final current = p.stockQuantity ?? 0;
+              await (db.update(
+                db.products,
+              )..where((t) => t.id.equals(p.id))).write(
+                ProductsCompanion(stockQuantity: drift.Value(current + amount)),
+              );
+            }
+            if (mounted) {
+              _fetchData();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text("Berhasil menambah +$amount ke semua produk."),
+                ),
+              );
+            }
+          } catch (e) {
+            debugPrint("Restock error: $e");
+            if (mounted) setState(() => _isLoading = false);
+          }
+        },
+        secondaryActionLabel: "Batal",
+      ),
+    );
+  }
+
+  Widget _buildDialogTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData prefixIcon,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        TextField(
           controller: controller,
           keyboardType: TextInputType.number,
           autofocus: true,
-          decoration: const InputDecoration(
-            labelText: "Jumlah Tambahan (misal: 10)",
+          style: GoogleFonts.inter(),
+          decoration: InputDecoration(
+            hintText: hint,
+            prefixIcon: Icon(prefixIcon, size: 20, color: Colors.grey),
+            filled: true,
+            fillColor: isDark
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.grey[100],
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none,
+            ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Batal"),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final amount = int.tryParse(controller.text) ?? 0;
-              if (amount > 0) {
-                Navigator.pop(ctx);
-                setState(() => _isLoading = true);
-
-                try {
-                  final db = Provider.of<AppDatabase>(context, listen: false);
-                  for (var p in _filteredProducts) {
-                    final current = p.stockQuantity ?? 0;
-                    await (db.update(
-                      db.products,
-                    )..where((t) => t.id.equals(p.id))).write(
-                      ProductsCompanion(
-                        stockQuantity: drift.Value(current + amount),
-                      ),
-                    );
-                  }
-                  if (mounted) {
-                    _fetchData();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          "Berhasil menambah +$amount ke semua produk.",
-                        ),
-                      ),
-                    );
-                  }
-                } catch (e) {
-                  debugPrint("Restock error: $e");
-                  if (mounted) setState(() => _isLoading = false);
-                }
-              }
-            },
-            child: const Text("Simpan"),
-          ),
-        ],
-      ),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryOrange = const Color(0xFFEA5700);
+    const primaryOrange = Color(0xFFEA5700);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -618,7 +758,7 @@ class _InventoryPageState extends State<InventoryPage> {
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: IconButton(
-              icon: Icon(
+              icon: const Icon(
                 CupertinoIcons.plus_circle_fill,
                 color: primaryOrange,
                 size: 28,
@@ -631,16 +771,26 @@ class _InventoryPageState extends State<InventoryPage> {
       ),
       body: Column(
         children: [
-          // Search Bar
+          // Search Bar & Sort
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-            child: BigSearchBar(
-              controller: _searchController,
-              hintText: SettingsController.instance.getString('search_product'),
-              onChanged: (val) {},
-              onClear: () {
-                _searchController.clear();
-              },
+            child: Row(
+              children: [
+                Expanded(
+                  child: BigSearchBar(
+                    controller: _searchController,
+                    hintText: SettingsController.instance.getString(
+                      'search_product',
+                    ),
+                    onChanged: (val) {},
+                    onClear: () {
+                      _searchController.clear();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _buildSortButton(isDark),
+              ],
             ),
           ),
 
@@ -1156,55 +1306,67 @@ class _InventoryPageState extends State<InventoryPage> {
 
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text("Restock: ${product.name}"),
+      builder: (context) => AsriDialog(
+        title: "Restock: ${product.name}",
+        icon: Icons.add_box_rounded,
+        iconColor: Colors.green,
         content: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Text("Stok Saat Ini: $currentStock"),
-            const SizedBox(height: 10),
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: "Tambah Jumlah Stok",
-                border: OutlineInputBorder(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.green.withValues(alpha: 0.1)),
               ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "Stok Saat Ini",
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  Text(
+                    currentStock.toString(),
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Colors.green,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            _buildDialogTextField(
+              controller: controller,
+              label: "Jumlah Tambahan",
+              hint: "Contoh: 5",
+              prefixIcon: Icons.add_circle_outline_rounded,
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Batal"),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final addAmount = int.tryParse(controller.text) ?? 0;
-              if (addAmount > 0) {
-                final newStock = currentStock + addAmount;
-                final db = Provider.of<AppDatabase>(context, listen: false);
-                await (db.update(
-                  db.products,
-                )..where((t) => t.id.equals(product.id))).write(
-                  ProductsCompanion(stockQuantity: drift.Value(newStock)),
-                );
+        primaryActionLabel: "Simpan",
+        onPrimaryAction: () async {
+          final addAmount = int.tryParse(controller.text) ?? 0;
+          if (addAmount <= 0) return;
+          final newStock = currentStock + addAmount;
+          final db = Provider.of<AppDatabase>(context, listen: false);
+          await (db.update(db.products)..where((t) => t.id.equals(product.id)))
+              .write(ProductsCompanion(stockQuantity: drift.Value(newStock)));
 
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  _fetchData();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text("Stok berhasil ditambah: +$addAmount"),
-                    ),
-                  );
-                }
-              }
-            },
-            child: const Text("Simpan"),
-          ),
-        ],
+          if (context.mounted) {
+            Navigator.pop(context);
+            _fetchData();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Stok berhasil ditambah: +$addAmount")),
+            );
+          }
+        },
+        secondaryActionLabel: "Batal",
       ),
     );
   }
@@ -1430,6 +1592,83 @@ class _InventoryPageState extends State<InventoryPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSortButton(bool isDark) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.grey.withValues(alpha: 0.1),
+        ),
+      ),
+      child: PopupMenuButton<String>(
+        offset: const Offset(0, 56),
+        icon: Icon(
+          CupertinoIcons.sort_down,
+          color: _sortBy.contains('stock')
+              ? const Color(0xFFEA5700)
+              : (isDark ? Colors.white70 : Colors.grey[700]),
+        ),
+        tooltip: 'Urutkan Produk',
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        onSelected: (val) {
+          setState(() {
+            _sortBy = val;
+            _applyFilters();
+          });
+        },
+        itemBuilder: (ctx) => [
+          _buildSortItem('name_asc', Icons.sort_by_alpha, 'Nama (A-Z)'),
+          _buildSortItem('stock_asc', Icons.trending_up, 'Stok Terendah'),
+          _buildSortItem('stock_desc', Icons.trending_down, 'Stok Tertinggi'),
+          _buildSortItem('price_asc', Icons.arrow_upward, 'Harga Termurah'),
+          _buildSortItem('price_desc', Icons.arrow_downward, 'Harga Termahal'),
+        ],
+      ),
+    );
+  }
+
+  PopupMenuItem<String> _buildSortItem(
+    String value,
+    IconData icon,
+    String label,
+  ) {
+    final isSelected = _sortBy == value;
+    const primaryOrange = Color(0xFFEA5700);
+
+    return PopupMenuItem(
+      value: value,
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: isSelected ? primaryOrange : Colors.grey[600],
+          ),
+          const SizedBox(width: 12),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+              color: isSelected ? primaryOrange : null,
+            ),
+          ),
+          if (isSelected) ...[
+            const Spacer(),
+            Icon(Icons.check, size: 16, color: primaryOrange),
+          ],
+        ],
       ),
     );
   }

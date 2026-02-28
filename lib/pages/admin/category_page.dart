@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../services/app_database.dart';
 import 'package:drift/drift.dart' as drift;
 import 'package:uuid/uuid.dart';
+import '../../widgets/asri_dialog.dart';
 
 class CategoryPage extends StatefulWidget {
   final String storeId;
@@ -180,28 +181,25 @@ class _CategoryPageState extends State<CategoryPage> {
   }
 
   Future<void> _deleteCategory(String id) async {
-    final db = Provider.of<AppDatabase>(context, listen: false);
-    final confirm = await showCupertinoDialog<bool>(
+    final category = _categories.firstWhere((c) => c.id == id);
+    final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: const Text("Hapus Kategori?"),
-        content: const Text("Tindakan ini tidak dapat dibatalkan."),
-        actions: [
-          CupertinoDialogAction(
-            child: const Text("Batal"),
-            onPressed: () => Navigator.pop(ctx, false),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Hapus"),
-          ),
-        ],
+      builder: (ctx) => AsriDialog(
+        title: "Hapus Kategori?",
+        message:
+            "Tindakan ini tidak dapat dibatalkan. Kategori '${category.name}' akan dihapus.",
+        icon: CupertinoIcons.trash_fill,
+        iconColor: Colors.redAccent,
+        primaryActionLabel: "Hapus",
+        isDestructive: true,
+        onPrimaryAction: () => Navigator.pop(ctx, true),
+        secondaryActionLabel: "Batal",
       ),
     );
 
     if (confirm == true && mounted) {
       try {
+        final db = Provider.of<AppDatabase>(context, listen: false);
         await (db.delete(db.categories)..where((t) => t.id.equals(id))).go();
         _fetchCategories();
       } catch (e) {

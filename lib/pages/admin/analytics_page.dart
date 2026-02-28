@@ -200,6 +200,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
         value: "${controller.employeeCount}",
         icon: CupertinoIcons.person_2_fill,
         color: const Color(0xFF3B82F6),
+        horizontal: true,
         onTap: () {
           if (widget.onNavigateToIndex != null) {
             widget.onNavigateToIndex!(5);
@@ -216,6 +217,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
         value: "${controller.totalTransactionCount}",
         icon: CupertinoIcons.doc_text_fill,
         color: const Color(0xFFF59E0B),
+        horizontal: true,
         onTap: () {
           if (widget.onNavigateToIndex != null) {
             widget.onNavigateToIndex!(4);
@@ -232,6 +234,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
         value: currency.format(controller.todaySales),
         icon: Icons.today_rounded,
         color: const Color(0xFFEA5700),
+        horizontal: true,
         onTap: () => controller.setRange(ChartRange.today),
       ),
       StatCard(
@@ -239,6 +242,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
         value: currency.format(controller.thisWeekSales),
         icon: Icons.calendar_view_week_rounded,
         color: const Color(0xFF6366F1),
+        horizontal: true,
         onTap: () => controller.setRange(ChartRange.week),
       ),
       StatCard(
@@ -246,6 +250,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
         value: currency.format(controller.thisMonthSales),
         icon: Icons.calendar_month_rounded,
         color: const Color(0xFF10B981),
+        horizontal: true,
         onTap: () => controller.setRange(ChartRange.month),
       ),
       StatCard(
@@ -253,6 +258,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
         value: "${controller.totalProductCount}",
         icon: CupertinoIcons.cube_box_fill,
         color: const Color(0xFF8B5CF6),
+        horizontal: true,
         onTap: () {
           if (widget.onNavigateToIndex != null) {
             widget.onNavigateToIndex!(1);
@@ -266,32 +272,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
       ),
     ];
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        bool isWide = constraints.maxWidth > 550;
-        if (isWide) {
-          return GridView.count(
-            crossAxisCount: 3,
-            mainAxisSpacing: 16,
-            crossAxisSpacing: 16,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            childAspectRatio: 1.4,
-            children: cards,
-          );
-        } else {
-          return GridView.count(
-            crossAxisCount: 2,
-            mainAxisSpacing: 16,
-            crossAxisSpacing: 16,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            childAspectRatio: 1.1,
-            children: cards,
-          );
-        }
-      },
-    );
+    return Wrap(spacing: 12, runSpacing: 12, children: cards);
   }
 
   Widget _buildChartSection(

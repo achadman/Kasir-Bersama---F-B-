@@ -78,6 +78,11 @@ class _KasirPageState extends State<KasirPage> {
     'promo_names': [],
   };
   bool _isPaymentFullscreen = false;
+  String? _lastModifiedCartId;
+  Customer? _selectedCustomer;
+  bool _isSidebarVisible = true;
+  final List<String> _recentProductIds =
+      []; // Session-based recently sold products
 
   Future<void> _recalculateDiscounts() async {
     if (_storeId == null) return;
@@ -294,15 +299,18 @@ class _KasirPageState extends State<KasirPage> {
 
       if (existingIndex != -1) {
         _cartItems[existingIndex]['quantity']++;
+        _lastModifiedCartId = _cartItems[existingIndex]['cart_id'];
       } else {
+        final newId = DateTime.now().microsecondsSinceEpoch.toString();
         _cartItems.add({
-          'cart_id': DateTime.now().microsecondsSinceEpoch.toString(),
+          'cart_id': newId,
           'product': product,
           'quantity': 1,
           'selected_options': options ?? [],
           'notes': notes ?? '',
           'price': price ?? product.salePrice ?? 0,
         });
+        _lastModifiedCartId = newId;
       }
       _recalculateDiscounts();
     });
@@ -378,7 +386,6 @@ class _KasirPageState extends State<KasirPage> {
       final discount = _discountData['total_discount'] as double;
       final finalTotal = (totalAmount - discount).clamp(0.0, double.infinity);
 
-      // 3. Save order and get ID
       final txId = await _orderService.createOrder(
         storeId: _storeId!,
         userId: uId,
@@ -387,7 +394,15 @@ class _KasirPageState extends State<KasirPage> {
         change: _cashReceived - finalTotal,
         paymentMethod: _selectedPaymentMethod,
         items: items,
+        customerId: _selectedCustomer?.id,
       );
+
+      // 4. Update session-recent list after successful save
+      for (var cartItem in _cartItems) {
+        final Product p = cartItem['product'];
+        _recentProductIds.remove(p.id);
+        _recentProductIds.insert(0, p.id);
+      }
 
       // 3. Generate Receipt Data
       final now = DateTime.now();
@@ -477,6 +492,7 @@ class _KasirPageState extends State<KasirPage> {
         'promo_count': 0,
         'promo_names': [],
       };
+      _selectedCustomer = null;
     });
   }
 
@@ -617,7 +633,7 @@ class _KasirPageState extends State<KasirPage> {
                       // Main Content
                       if (!_isPaymentFullscreen)
                         Expanded(
-                          flex: 7,
+                          flex: constraints.maxWidth < 1024 ? 2 : 7,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -693,6 +709,34 @@ class _KasirPageState extends State<KasirPage> {
                                             : "Tampilan Grid",
                                       ),
                                     ),
+                                    if (!_isSidebarVisible) ...[
+                                      const SizedBox(width: 12),
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? Colors.white10
+                                              : Colors.white,
+                                          borderRadius: BorderRadius.circular(
+                                            15,
+                                          ),
+                                          border: Border.all(
+                                            color: isDark
+                                                ? Colors.white10
+                                                : Colors.grey[200]!,
+                                          ),
+                                        ),
+                                        child: IconButton(
+                                          icon: const Icon(
+                                            Icons.shopping_cart_outlined,
+                                          ),
+                                          color: _primaryColor,
+                                          onPressed: () => setState(
+                                            () => _isSidebarVisible = true,
+                                          ),
+                                          tooltip: "Buka Keranjang",
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -903,6 +947,7 @@ class _KasirPageState extends State<KasirPage> {
                                             : null,
                                         filterType: _selectedFilter,
                                         salesMap: _salesMap,
+                                        recentProductIds: _recentProductIds,
                                         isGridView: _isGridView,
                                         onItemTap: (Product product) {
                                           _handleProductSelection(product);
@@ -919,77 +964,88 @@ class _KasirPageState extends State<KasirPage> {
                           ),
                         ),
                       // Right Side (Invoice Sidebar - Smoother)
-                      Expanded(
-                        flex: _isPaymentFullscreen ? 1 : 3,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            border: Border(
-                              left: BorderSide(
-                                color: isDark
-                                    ? Colors.white10
-                                    : Colors.grey[200]!,
+                      if (_isSidebarVisible)
+                        Expanded(
+                          flex: _isPaymentFullscreen
+                              ? 1
+                              : (constraints.maxWidth < 1024 ? 1 : 3),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              border: Border(
+                                left: BorderSide(
+                                  color: isDark
+                                      ? Colors.white10
+                                      : Colors.grey[200]!,
+                                ),
                               ),
                             ),
-                          ),
-                          child: CartSidebar(
-                            searchController: _searchController,
-                            onSearchChanged: (val) => setState(
-                              () => _searchQuery = val.toLowerCase(),
+                            child: CartSidebar(
+                              searchController: _searchController,
+                              onSearchChanged: (val) => setState(
+                                () => _searchQuery = val.toLowerCase(),
+                              ),
+                              onSearchSubmitted: _searchAndAddBySku,
+                              onSearchClear: () {
+                                setState(() {
+                                  _searchController.clear();
+                                  _searchQuery = "";
+                                });
+                              },
+                              cartItems: _cartItems,
+                              isProcessing: _isProcessing,
+                              discountData: _discountData,
+                              isGridView: _isGridView,
+                              onToggleGrid: () {
+                                final newValue = !_isGridView;
+                                setState(() => _isGridView = newValue);
+                                SettingsController.instance.setGridView(
+                                  newValue,
+                                );
+                              },
+                              onModeChanged: (isPayment) {
+                                setState(
+                                  () => _isPaymentFullscreen = isPayment,
+                                );
+                              },
+                              onRemoveItem: (cartId) {
+                                _removeFromCart(cartId);
+                                setState(() {});
+                              },
+                              onAddItem:
+                                  (Product product, {options, notes, price}) {
+                                    _handleProductSelection(
+                                      product,
+                                      options: options,
+                                      notes: notes,
+                                      price: price,
+                                    );
+                                    setState(() {});
+                                  },
+                              onCheckout: (cash, method) {
+                                setState(() {
+                                  _cashReceived = cash;
+                                  _selectedPaymentMethod = method;
+                                });
+                                _processCheckout();
+                              },
+                              onAbortTransaction: () {
+                                setState(() {
+                                  _cartItems.clear();
+                                  _cashReceived = 0;
+                                  _lastModifiedCartId = null;
+                                  _discountData = {
+                                    'total_discount': 0.0,
+                                    'promo_count': 0,
+                                    'promo_names': [],
+                                  };
+                                });
+                              },
+                              onClose: () =>
+                                  setState(() => _isSidebarVisible = false),
+                              lastModifiedCartId: _lastModifiedCartId,
                             ),
-                            onSearchSubmitted: _searchAndAddBySku,
-                            onSearchClear: () {
-                              setState(() {
-                                _searchController.clear();
-                                _searchQuery = "";
-                              });
-                            },
-                            cartItems: _cartItems,
-                            isProcessing: _isProcessing,
-                            discountData: _discountData,
-                            isGridView: _isGridView,
-                            onToggleGrid: () {
-                              final newValue = !_isGridView;
-                              setState(() => _isGridView = newValue);
-                              SettingsController.instance.setGridView(newValue);
-                            },
-                            onModeChanged: (isPayment) {
-                              setState(() => _isPaymentFullscreen = isPayment);
-                            },
-                            onRemoveItem: (cartId) {
-                              _removeFromCart(cartId);
-                              setState(() {});
-                            },
-                            onAddItem:
-                                (Product product, {options, notes, price}) {
-                                  _handleProductSelection(
-                                    product,
-                                    options: options,
-                                    notes: notes,
-                                    price: price,
-                                  );
-                                  setState(() {});
-                                },
-                            onCheckout: (cash, method) {
-                              setState(() {
-                                _cashReceived = cash;
-                                _selectedPaymentMethod = method;
-                              });
-                              _processCheckout();
-                            },
-                            onAbortTransaction: () {
-                              setState(() {
-                                _cartItems.clear();
-                                _cashReceived = 0;
-                                _discountData = {
-                                  'total_discount': 0.0,
-                                  'promo_count': 0,
-                                  'promo_names': [],
-                                };
-                              });
-                            },
                           ),
                         ),
-                      ),
                     ],
                   );
                 }
@@ -1215,7 +1271,9 @@ class _KasirPageState extends State<KasirPage> {
                                             : _promoCategories[_selectedPromoIndex]['categoryIds']
                                                   as Set<String>)
                                       : null,
+                                  filterType: _selectedFilter,
                                   salesMap: _salesMap,
+                                  recentProductIds: _recentProductIds,
                                   isGridView: _isGridView,
                                   onItemTap: (Product product) {
                                     _handleProductSelection(product);
@@ -1267,26 +1325,35 @@ class _KasirPageState extends State<KasirPage> {
                                   ),
                                 ),
                                 const SizedBox(width: 16),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      "Total",
-                                      style: GoogleFonts.inter(
-                                        color: Colors.white70,
-                                        fontSize: 12,
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        "Total",
+                                        style: GoogleFonts.inter(
+                                          color: Colors.white70,
+                                          fontSize: 12,
+                                        ),
                                       ),
-                                    ),
-                                    Text(
-                                      _currencyFormat.format(_getCartTotal()),
-                                      style: GoogleFonts.poppins(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          _currencyFormat.format(
+                                            _getCartTotal(),
+                                          ),
+                                          style: GoogleFonts.poppins(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                                 const Spacer(),
                                 const Icon(
@@ -1653,12 +1720,18 @@ class _KasirPageState extends State<KasirPage> {
                   setState(() {
                     _cartItems.clear();
                     _cashReceived = 0;
+                    _selectedCustomer = null;
                     _discountData = {
                       'total_discount': 0.0,
                       'promo_count': 0,
                       'promo_names': [],
                     };
                   });
+                },
+                selectedCustomer: _selectedCustomer,
+                onCustomerSelected: (cust) {
+                  setSheetState(() => _selectedCustomer = cust);
+                  setState(() {});
                 },
               ),
             ),

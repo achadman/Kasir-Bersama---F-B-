@@ -213,6 +213,21 @@ class Expenses extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+class PaymentMethods extends Table {
+  TextColumn get id => text()();
+  TextColumn get storeId => text().nullable()();
+  TextColumn get name => text()();
+  TextColumn get type => text()(); // cash, qris, ewallet
+  TextColumn get details => text().nullable()(); // number
+  TextColumn get username => text().nullable()();
+  TextColumn get qrisUrl => text().nullable()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get createdAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 // --- DATABASE CLASS ---
 
 @DriftDatabase(
@@ -230,13 +245,14 @@ class Expenses extends Table {
     PromotionItems,
     Expenses,
     Customers,
+    PaymentMethods,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -272,6 +288,9 @@ class AppDatabase extends _$AppDatabase {
             rethrow;
           }
         }
+      }
+      if (from < 6) {
+        await m.createTable(paymentMethods);
       }
     },
   );

@@ -82,6 +82,7 @@ class AdminDrawer extends StatelessWidget {
                     onDashboardTap();
                   },
                   isActive: selectedIndex == 0,
+                  itemColor: const Color(0xFF3498DB),
                 ),
                 _buildSectionTitle("OPERASIONAL"),
                 if (role?.toLowerCase() == 'owner' ||
@@ -96,6 +97,7 @@ class AdminDrawer extends StatelessWidget {
                       onInventoryTap();
                     },
                     isActive: selectedIndex == 1,
+                    itemColor: const Color(0xFF2ECC71),
                   ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
@@ -109,6 +111,7 @@ class AdminDrawer extends StatelessWidget {
                       onCategoryTap();
                     },
                     isActive: selectedIndex == 2,
+                    itemColor: const Color(0xFF9B59B6),
                   ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
@@ -122,6 +125,7 @@ class AdminDrawer extends StatelessWidget {
                       onKasirTap();
                     },
                     isActive: selectedIndex == 3,
+                    itemColor: const Color(0xFFEA5700),
                   ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin')
@@ -134,6 +138,7 @@ class AdminDrawer extends StatelessWidget {
                       onEmployeeTap();
                     },
                     isActive: selectedIndex == 5,
+                    itemColor: const Color(0xFFE91E63),
                   ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
@@ -147,6 +152,7 @@ class AdminDrawer extends StatelessWidget {
                       onHistoryTap();
                     },
                     isActive: selectedIndex == 4,
+                    itemColor: const Color(0xFF1ABC9C),
                   ),
                 _buildModernItem(
                   context,
@@ -157,6 +163,7 @@ class AdminDrawer extends StatelessWidget {
                     onCustomerTap();
                   },
                   isActive: selectedIndex == 12,
+                  itemColor: const Color(0xFFF1C40F),
                 ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
@@ -170,6 +177,7 @@ class AdminDrawer extends StatelessWidget {
                       onPromotionTap();
                     },
                     isActive: selectedIndex == 9,
+                    itemColor: const Color(0xFFD63031),
                   ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
@@ -183,6 +191,7 @@ class AdminDrawer extends StatelessWidget {
                       onPrinterTap();
                     },
                     isActive: selectedIndex == 7,
+                    itemColor: const Color(0xFF636E72),
                   ),
                 if (role?.toLowerCase() == 'owner' ||
                     role?.toLowerCase() == 'admin' ||
@@ -198,6 +207,7 @@ class AdminDrawer extends StatelessWidget {
                     },
                     isSpecial: true,
                     isActive: selectedIndex == 6,
+                    itemColor: const Color(0xFF00BCD4),
                   ),
                   _buildModernItem(
                     context,
@@ -209,6 +219,7 @@ class AdminDrawer extends StatelessWidget {
                     },
                     isSpecial: true,
                     isActive: selectedIndex == 11,
+                    itemColor: const Color(0xFF6C5CE7),
                   ),
                   _buildModernItem(
                     context,
@@ -220,6 +231,7 @@ class AdminDrawer extends StatelessWidget {
                     },
                     isSpecial: true,
                     isActive: selectedIndex == 10,
+                    itemColor: const Color(0xFFE17055),
                   ),
                 ],
               ],
@@ -399,17 +411,18 @@ class AdminDrawer extends StatelessWidget {
     required VoidCallback onTap,
     bool isActive = false,
     bool isSpecial = false,
+    Color? itemColor,
   }) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final activeColor = isSpecial ? Colors.blue : primaryColor;
-    final activeBg = activeColor.withValues(alpha: 0.1);
+    final baseColor = itemColor ?? (isSpecial ? Colors.blue : primaryColor);
+    final activeBg = baseColor.withValues(alpha: 0.1);
     final textColor = isActive
-        ? activeColor
+        ? baseColor
         : (isDark ? Colors.white70 : const Color(0xFF2D3436));
     final iconColor = isActive
-        ? activeColor
+        ? baseColor
         : (isDark ? Colors.white54 : Colors.grey[500]);
 
     return Padding(
@@ -445,7 +458,7 @@ class AdminDrawer extends StatelessWidget {
                     width: 6,
                     height: 6,
                     decoration: BoxDecoration(
-                      color: activeColor,
+                      color: baseColor,
                       shape: BoxShape.circle,
                     ),
                   ),

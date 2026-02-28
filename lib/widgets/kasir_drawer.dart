@@ -99,6 +99,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                     label: "Profil Saya",
                     isSelected: widget.currentRoute == '/profile',
                     accentColor: accentColor,
+                    itemColor: const Color(0xFF3498DB),
                     onTap: () {
                       Navigator.pop(context);
                       if (widget.onIndexSelected != null) {
@@ -114,6 +115,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                       label: SettingsController.instance.getString('beranda'),
                       isSelected: widget.currentRoute == '/kasir',
                       accentColor: accentColor,
+                      itemColor: const Color(0xFFEA5700),
                       onTap: () {
                         Navigator.pop(context);
                         if (widget.onIndexSelected != null) {
@@ -131,6 +133,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                       ),
                       isSelected: widget.currentRoute == '/inventory',
                       accentColor: accentColor,
+                      itemColor: const Color(0xFF2ECC71),
                       onTap: () {
                         Navigator.pop(context);
                         if (widget.onIndexSelected != null) {
@@ -153,6 +156,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                       ),
                       isSelected: widget.currentRoute == '/categories',
                       accentColor: accentColor,
+                      itemColor: const Color(0xFF9B59B6),
                       onTap: () {
                         Navigator.pop(context);
                         if (widget.onIndexSelected != null) {
@@ -173,6 +177,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                     label: SettingsController.instance.getString('absen_staff'),
                     isSelected: widget.currentRoute == '/attendance',
                     accentColor: accentColor,
+                    itemColor: const Color(0xFFE91E63),
                     onTap: () {
                       Navigator.pop(context);
                       if (widget.onIndexSelected != null) {
@@ -190,6 +195,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                       ),
                       isSelected: widget.currentRoute == '/order-history',
                       accentColor: accentColor,
+                      itemColor: const Color(0xFF1ABC9C),
                       onTap: () {
                         Navigator.pop(context);
                         if (widget.onIndexSelected != null) {
@@ -210,6 +216,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                       ),
                       isSelected: widget.currentRoute == '/profit-loss',
                       accentColor: accentColor,
+                      itemColor: const Color(0xFF6C5CE7),
                       onTap: () {
                         Navigator.pop(context);
                         if (widget.onIndexSelected != null) {
@@ -231,6 +238,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                       label: "Loyalty Pelanggan",
                       isSelected: widget.currentRoute == '/customers',
                       accentColor: accentColor,
+                      itemColor: const Color(0xFFF1C40F),
                       onTap: () {
                         Navigator.pop(context);
                         if (widget.onIndexSelected != null) {
@@ -251,6 +259,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                       label: "Promosi & Diskon",
                       isSelected: widget.currentRoute == '/promotions',
                       accentColor: accentColor,
+                      itemColor: const Color(0xFFD63031),
                       onTap: () {
                         Navigator.pop(context);
                         if (widget.onIndexSelected != null) {
@@ -273,6 +282,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                       ),
                       isSelected: widget.currentRoute == '/printer-settings',
                       accentColor: accentColor,
+                      itemColor: const Color(0xFF636E72),
                       onTap: () {
                         Navigator.pop(context);
                         if (widget.onIndexSelected != null) {
@@ -298,6 +308,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                       ),
                       isSelected: false,
                       accentColor: Colors.blue,
+                      itemColor: const Color(0xFF00BCD4),
                       isSpecial: true,
                       onTap: () {
                         Navigator.pop(context);
@@ -468,16 +479,17 @@ class _KasirDrawerState extends State<KasirDrawer> {
     required bool isSelected,
     required VoidCallback onTap,
     required Color accentColor,
+    Color? itemColor,
     bool isSpecial = false,
   }) {
     final isDark = ThemeController.instance.isDarkMode;
-    final activeColor = isSpecial ? Colors.blue : accentColor;
-    final activeBg = activeColor.withValues(alpha: 0.1);
+    final baseColor = itemColor ?? (isSpecial ? Colors.blue : accentColor);
+    final activeBg = baseColor.withValues(alpha: 0.1);
     final textColor = isSelected
-        ? activeColor
+        ? baseColor
         : (isDark ? Colors.white70 : const Color(0xFF2D3436));
     final iconColor = isSelected
-        ? activeColor
+        ? baseColor
         : (isDark ? Colors.white54 : Colors.grey[500]);
 
     return Padding(
@@ -515,7 +527,7 @@ class _KasirDrawerState extends State<KasirDrawer> {
                     width: 6,
                     height: 6,
                     decoration: BoxDecoration(
-                      color: activeColor,
+                      color: baseColor,
                       shape: BoxShape.circle,
                     ),
                   ),

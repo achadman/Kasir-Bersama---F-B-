@@ -222,7 +222,8 @@ class _AdminPageState extends State<AdminPage> {
                               color: Colors.white,
                               size: 28,
                             ),
-                            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                            onPressed: () =>
+                                _scaffoldKey.currentState?.openDrawer(),
                           ),
                         ),
                       if (!isWide) const SizedBox(width: 12),
@@ -296,6 +297,7 @@ class _AdminPageState extends State<AdminPage> {
               ],
             ),
           ),
+          _buildQuickMenu(),
           Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
@@ -305,103 +307,59 @@ class _AdminPageState extends State<AdminPage> {
                   SettingsController.instance.getString('today_summary'),
                 ),
                 const SizedBox(height: 16),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final width = constraints.maxWidth;
-                    int crossAxisCount = 1;
-                    double aspectRatio = 2.5;
-
-                    if (width > 900) {
-                      crossAxisCount = 4;
-                      aspectRatio = 1.3;
-                    } else if (width > 550) {
-                      crossAxisCount = 2;
-                      aspectRatio = 1.2;
-                    } else {
-                      // Small phone or ultra-narrow desktop
-                      crossAxisCount = 1;
-                      aspectRatio = 3.5;
-                    }
-
-                    final isHorizontal = crossAxisCount == 1;
-                    if (isHorizontal) {
-                      aspectRatio = 4.5; // Flatter for horizontal mode
-                    }
-
-                    final cards = [
-                      StatCard(
-                        title: SettingsController.instance.getString('income'),
-                        value: currencyFormat.format(controller.todaySales),
-                        icon: Icons.attach_money_rounded,
-                        color: const Color(0xFFEA5700),
-                        horizontal: isHorizontal,
-                        onTap: () => setState(() => _selectedIndex = 6),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    StatCard(
+                      title: SettingsController.instance.getString('income'),
+                      value: currencyFormat.format(controller.todaySales),
+                      icon: Icons.attach_money_rounded,
+                      color: const Color(0xFFEA5700),
+                      horizontal: true,
+                      onTap: () => setState(() => _selectedIndex = 6),
+                    ),
+                    StatCard(
+                      title: SettingsController.instance.getString(
+                        'transactions',
                       ),
-                      StatCard(
-                        title: SettingsController.instance.getString(
-                          'transactions',
-                        ),
-                        value: '${controller.transactionCount}',
-                        icon: Icons.receipt_long_rounded,
-                        color: const Color(0xFF2196F3),
-                        horizontal: isHorizontal,
-                        onTap: () => setState(() => _selectedIndex = 4),
-                      ),
-                      FutureBuilder<int>(
-                        future: _getTotalProducts(controller),
-                        builder: (context, snapshot) {
-                          return StatCard(
-                            title: SettingsController.instance.getString(
-                              'nav_inventory',
-                            ),
-                            value: '${snapshot.data ?? 0}',
-                            icon: Icons.inventory_2_rounded,
-                            color: const Color(0xFF4CAF50),
-                            horizontal: isHorizontal,
-                            onTap: () => setState(() => _selectedIndex = 1),
-                          );
-                        },
-                      ),
-                      FutureBuilder<int>(
-                        future: _getTotalEmployees(controller),
-                        builder: (context, snapshot) {
-                          return StatCard(
-                            title: SettingsController.instance.getString(
-                              'employee_list',
-                            ),
-                            value: '${snapshot.data ?? 0}',
-                            icon: Icons.people_rounded,
-                            color: const Color(0xFF9C27B0),
-                            horizontal: isHorizontal,
-                            onTap: () => setState(() => _selectedIndex = 5),
-                          );
-                        },
-                      ),
-                    ];
-
-                    if (isHorizontal) {
-                      return Column(
-                        children: cards
-                            .map(
-                              (card) => Padding(
-                                padding: const EdgeInsets.only(bottom: 16),
-                                child: card,
-                              ),
-                            )
-                            .toList(),
-                      );
-                    }
-
-                    return GridView.count(
-                      crossAxisCount: crossAxisCount,
-                      mainAxisSpacing: 16,
-                      crossAxisSpacing: 16,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      childAspectRatio: aspectRatio,
-                      children: cards,
-                    );
-                  },
+                      value: '${controller.transactionCount}',
+                      icon: Icons.receipt_long_rounded,
+                      color: const Color(0xFF2196F3),
+                      horizontal: true,
+                      onTap: () => setState(() => _selectedIndex = 4),
+                    ),
+                    FutureBuilder<int>(
+                      future: _getTotalProducts(controller),
+                      builder: (context, snapshot) {
+                        return StatCard(
+                          title: SettingsController.instance.getString(
+                            'nav_inventory',
+                          ),
+                          value: '${snapshot.data ?? 0}',
+                          icon: Icons.inventory_2_rounded,
+                          color: const Color(0xFF4CAF50),
+                          horizontal: true,
+                          onTap: () => setState(() => _selectedIndex = 1),
+                        );
+                      },
+                    ),
+                    FutureBuilder<int>(
+                      future: _getTotalEmployees(controller),
+                      builder: (context, snapshot) {
+                        return StatCard(
+                          title: SettingsController.instance.getString(
+                            'employee_list',
+                          ),
+                          value: '${snapshot.data ?? 0}',
+                          icon: Icons.people_rounded,
+                          color: const Color(0xFF9C27B0),
+                          horizontal: true,
+                          onTap: () => setState(() => _selectedIndex = 5),
+                        );
+                      },
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 32),
                 _buildLowStockInsights(controller),
@@ -949,6 +907,176 @@ class _AdminPageState extends State<AdminPage> {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildQuickMenu() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+          child: Text(
+            "Akses Cepat",
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : const Color(0xFF2D3436),
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 110,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            children: [
+              _buildQuickMenuItem(
+                "Dashboard",
+                CupertinoIcons.square_grid_2x2_fill,
+                () => setState(() => _selectedIndex = 0),
+                isDark,
+                const Color(0xFF3498DB), // Blue
+              ),
+              _buildQuickMenuItem(
+                "Barang",
+                CupertinoIcons.cube_box_fill,
+                () => setState(() => _selectedIndex = 1),
+                isDark,
+                const Color(0xFF2ECC71), // Green
+              ),
+              _buildQuickMenuItem(
+                "Kategori",
+                CupertinoIcons.grid,
+                () => setState(() => _selectedIndex = 2),
+                isDark,
+                const Color(0xFF9B59B6), // Purple
+              ),
+              _buildQuickMenuItem(
+                "Kasir",
+                CupertinoIcons.cart_fill,
+                () => setState(() => _selectedIndex = 3),
+                isDark,
+                const Color(0xFFEA5700), // Original Orange
+              ),
+              _buildQuickMenuItem(
+                "Riwayat",
+                CupertinoIcons.doc_text_fill,
+                () => setState(() => _selectedIndex = 4),
+                isDark,
+                const Color(0xFF1ABC9C), // Teal
+              ),
+              _buildQuickMenuItem(
+                "Karyawan",
+                CupertinoIcons.person_2_fill,
+                () => setState(() => _selectedIndex = 5),
+                isDark,
+                const Color(0xFFE91E63), // Pink
+              ),
+              _buildQuickMenuItem(
+                "Analitik",
+                CupertinoIcons.graph_square_fill,
+                () => setState(() => _selectedIndex = 6),
+                isDark,
+                const Color(0xFF00BCD4), // Cyan
+              ),
+              _buildQuickMenuItem(
+                "Laba Rugi",
+                CupertinoIcons.graph_circle_fill,
+                () => setState(() => _selectedIndex = 11),
+                isDark,
+                const Color(0xFF6C5CE7), // Soft Indigo
+              ),
+              _buildQuickMenuItem(
+                "Pelanggan",
+                CupertinoIcons.person_crop_circle_fill,
+                () => setState(() => _selectedIndex = 12),
+                isDark,
+                const Color(0xFFF1C40F), // Sun Flower Yellow
+              ),
+              _buildQuickMenuItem(
+                "Data",
+                CupertinoIcons.cloud_download_fill,
+                () => setState(() => _selectedIndex = 10),
+                isDark,
+                const Color(0xFFE17055), // Terra Cotta
+              ),
+              _buildQuickMenuItem(
+                "Printer",
+                CupertinoIcons.printer_fill,
+                () => setState(() => _selectedIndex = 7),
+                isDark,
+                const Color(0xFF636E72), // American River Grey
+              ),
+              _buildQuickMenuItem(
+                "Promosi",
+                CupertinoIcons.percent,
+                () => setState(() => _selectedIndex = 9),
+                isDark,
+                const Color(0xFFD63031), // Chi-Gong Red
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickMenuItem(
+    String label,
+    IconData icon,
+    VoidCallback onTap,
+    bool isDark,
+    Color itemColor,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.all(4.0),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: 90,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: itemColor.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 24, color: itemColor),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
